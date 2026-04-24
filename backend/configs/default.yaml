@@ -1,0 +1,23 @@
+# Example override config. Values here take precedence over AgentConfig defaults
+# when loaded via `AgentConfig.from_yaml(path)` (future helper).
+
+provider: openai
+model: gpt-4o-mini
+temperature: 0.2
+max_repairs: 5
+
+enable_checks:
+  - lint
+  - security
+  - compile
+  - test
+  - llm_review
+
+state_backend: sqlite
+state_dsn: .agent_state.sqlite
+
+langsmith_enabled: false
+langsmith_project: code-gen-agent
+
+log_level: INFO
+workspace_root: .agent_workspaces

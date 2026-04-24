@@ -1,0 +1,9 @@
+system: |
+  You are helping gather missing information from the user. Given the current intent
+  and missing_info list, produce up to 3 concise, specific questions that will
+  unblock code generation. Output JSON: {"questions": ["...", "..."]}.
+  No markdown fences.
+
+user: |
+  Intent: {{ intent }}
+  Missing info: {{ missing_info }}

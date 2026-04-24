@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-gen-agent"
+version = "0.1.0"
+description = "A LangGraph-based code generation AI agent with ReAct and HITL"
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    "langgraph>=0.2.40",
+    "langgraph-checkpoint>=2.0.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-anthropic>=0.2.0",
+    "langchain-community>=0.3.0",
+    "langsmith>=0.1.120",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.6.0",
+    "pyyaml>=6.0.1",
+    "jinja2>=3.1.3",
+    "redis>=5.0.0",
+    "sqlalchemy>=2.0.0",
+    "sse-starlette>=2.1.0",
+    "httpx>=0.27.0",
+    "tenacity>=8.2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+redis = ["langgraph-checkpoint-redis>=2.0.0"]
+postgres = ["langgraph-checkpoint-postgres>=2.0.0", "psycopg[binary]>=3.1.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["code_gen_agent*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,76 @@
+# ============================================================================
+# Python
+# ============================================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+*.egg
+
+# ============================================================================
+# Node / Frontend
+# ============================================================================
+node_modules/
+dist/
+.vite/
+
+# ============================================================================
+# Runtime artifacts (backend) — kept OUT of git
+# ============================================================================
+# Graph state (langgraph checkpointer)
+*.sqlite
+*.sqlite3
+.agent_state*
+
+# Request records (one JSON per thread_id)
+backend/data/requests/*.json
+data/requests/*.json
+
+# Agent workspaces (generated code scratch dirs)
+.agent_workspaces/
+backend/.agent_workspaces/
+
+# Logs — ignore the files, keep the directory (via .gitkeep)
+backend/logs/*
+!backend/logs/.gitkeep
+backend/data/*
+!backend/data/.gitkeep
+!backend/data/requests/
+backend/data/requests/*
+!backend/data/requests/.gitkeep
+!backend/data/workspaces/
+backend/data/workspaces/*
+!backend/data/workspaces/.gitkeep
+*.log
+
+# ============================================================================
+# Secrets — keep templates (.env.example) in git, ignore real ones
+# ============================================================================
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ============================================================================
+# OS / IDE
+# ============================================================================
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ============================================================================
+# AI tooling — agent-local workspaces, not source code
+# ============================================================================
+.comate/
+.cursor/
+.claude/
+.aider*
+.github-copilot/
+CLAUDE.md
+AGENTS.md
