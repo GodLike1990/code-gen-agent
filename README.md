@@ -12,13 +12,17 @@ A LangGraph-based code generation AI agent featuring ReAct self-repair and Human
 └────────────────┘                └────────────────────────┘
                                            │
                                            ▼
-                         ┌──────────────────────────────────┐
-                         │ intent → clarify (HITL)          │
-                         │    ↓                              │
-                         │ decompose → codegen → checks(×5) │
-                         │     ↑          fail ↓             │
-                         │  hitl ← repair (ReAct, max 5)    │
-                         └──────────────────────────────────┘
+                  ┌────────────────────────────────────────────┐
+                  │ intent → clarify (HITL)                    │
+                  │    ↓                                        │
+                  │ decompose → codegen → checks(×5)           │
+                  │                 fail ↓       pass ↓        │
+                  │      hitl ← repair        → verify         │
+                  │ (abort→END)  (ReAct, max_repairs)   ↓      │
+                  │                              gaps → repair  │
+                  │                              accepted ↓     │
+                  │                            package (zip)    │
+                  └────────────────────────────────────────────┘
 ```
 
 Graph nodes:
@@ -29,7 +33,9 @@ Graph nodes:
 - **codegen** – generate full files or apply repair diff
 - **checks** – parallel: lint / security / compile / test / llm_review
 - **repair** – ReAct strategist (patch / regen / reclarify)
-- **hitl** – escalate after 5 failed attempts
+- **hitl** – escalate after `max_repairs` attempts (default 5); user can retry, patch, or abort
+- **verify** – LLM acceptance review; gaps trigger repair or HITL escalation
+- **package** – zip generated workspace into a downloadable artifact
 
 ## Project Structure
 
@@ -145,9 +151,9 @@ Switch providers by changing `provider` and `api_key` — no code changes needed
 - **Multi-backend state** — sqlite (default) / redis / postgres / memory
 - **Observability** — LangSmith tracing, structured per-thread JSON logs, token usage + cost accounting
 - **Web UI** — four pages:
-  - `/requirement` — intake + clarification + file preview
-  - `/graph` — live ReactFlow topology with node status
-  - `/hitl` — failure review, manual patch via Monaco, decision (retry/patch/abort)
+  - `/requirement` — intake, clarification Q&A, HITL failure review & manual patch, file preview, ZIP download
+  - `/graph` — live ReactFlow topology with per-node status and colour legend
+  - `/history` — past sessions; click a row to restore the session
   - `/observability` — embedded LangSmith, log table, token stats
 
 ## End-to-end Verification Scenarios
@@ -155,7 +161,7 @@ Switch providers by changing `provider` and `api_key` — no code changes needed
 1. **Happy path**: submit a simple request → intent/decompose/codegen/checks all pass → done
 2. **Clarification**: vague request → intent low confidence → clarify modal → resume
 3. **ReAct repair**: inject a failing check → repair node generates fix → checks re-run
-4. **HITL escalation**: 3 failures → escalate → user chooses retry/patch/abort on HITL page
+4. **HITL escalation**: max_repairs failures → escalate → user chooses retry/patch/abort on the Requirement page
 
 ## Extending
 

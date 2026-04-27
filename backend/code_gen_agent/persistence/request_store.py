@@ -11,7 +11,7 @@ Schema::
         "created_at": ISO-8601 UTC,
         "updated_at": ISO-8601 UTC,
         "request":    str,                        # original user text
-        "status":     "running" | "done" | "failed" | "interrupted",
+        "status":     "running" | "done" | "aborted" | "failed" | "interrupted" | "cancelled",
         "summary":    str | None                  # optional end-state summary
     }
 """

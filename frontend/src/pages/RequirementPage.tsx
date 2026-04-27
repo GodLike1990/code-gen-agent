@@ -19,9 +19,10 @@ import {
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../store/session';
-import { readSse } from '../api/sse';
 import { api } from '../api/client';
 import { RequirementRecord } from '../api/types';
+import { RUN_STATUS_ALERT } from '../constants/status';
+import { SSE_EVENT } from '../constants/events';
 import EventTimeline from '../components/EventTimeline';
 import FileTree from '../components/FileTree';
 import CodeViewer from '../components/CodeViewer';
@@ -40,7 +41,7 @@ const ACTION_HELP: Record<HitlAction, string> = {
 const ACTION_NEXT: Record<HitlAction, string> = {
   retry: 'Graph resumes at the repair node; a new attempt starts with your hint.',
   patch: 'Files you edited overwrite generated files; checks re-run on the new content.',
-  abort: 'Run status becomes "failed" and the thread is left in current state.',
+  abort: 'Run status becomes "aborted" — run stops immediately, no artifact produced.',
 };
 
 type Bubble =
@@ -109,7 +110,9 @@ export default function RequirementPage() {
         if (cancelled) return;
         setHistoryRec(rec);
         if (rec.status === 'done') setRunStatus('done');
+        else if (rec.status === 'aborted') setRunStatus('aborted');
         else if (rec.status === 'failed') setRunStatus('failed');
+        else if (rec.status === 'cancelled') setRunStatus('cancelled');
         else if (rec.status === 'interrupted') setRunStatus('hitl');
         else if (rec.status === 'running') setRunStatus('running');
       } catch {
@@ -274,29 +277,45 @@ export default function RequirementPage() {
   }, [events, historyRec, latestState, clarifyPayload, hitlPayload, interruptedAt]);
 
   // ---- SSE consumer ----
-  const consumeStream = async (res: Response) => {
-    for await (const ev of readSse(res)) {
+  // Iterates over the async generator from api.subscribeEvents() and dispatches
+  // each frame to the appropriate state updater.
+  //
+  // Frame types and their handling:
+  //   error         → setRunStatus('failed') + toast
+  //   clarify       → setClarify() to show the Q&A form
+  //   hitl/interrupt → setHitl() + setRunStatus('hitl') to show HITL form
+  //   done          → read final_status from payload; 'aborted' or 'done'
+  //   state_delta   → poll getState() + getUsage() for fresh snapshot
+  const consumeEvents = async (tid: string) => {
+    for await (const ev of api.subscribeEvents(tid)) {
       pushEvent({ ts: Date.now(), event: ev.event, data: ev.data });
       const data = ev.data as any;
-      if (ev.event === 'error' || data?.type === 'error') {
+      if (ev.event === SSE_EVENT.ERROR || data?.type === SSE_EVENT.ERROR) {
         setRunStatus('failed');
         const msg = data?.error_type
           ? `${data.error_type}: ${data.message}`
           : data?.message || 'Unknown error';
         message.error(msg.length > 200 ? msg.slice(0, 200) + '…' : msg, 6);
       }
-      if (ev.event === 'clarify' || data?.type === 'clarify') {
+      if (ev.event === SSE_EVENT.CLARIFY || data?.type === SSE_EVENT.CLARIFY) {
         setClarify({ questions: (data?.questions || []) as string[] });
       }
-      if (ev.event === 'hitl' || data?.type === 'hitl' || ev.event === 'interrupt') {
+      if (ev.event === SSE_EVENT.HITL || data?.type === SSE_EVENT.HITL || ev.event === SSE_EVENT.INTERRUPT) {
         setHitl(data);
         setRunStatus('hitl');
       }
-      if (ev.event === 'done') {
+      if (ev.event === SSE_EVENT.DONE) {
+        // The "done" frame carries final_status so the frontend can distinguish
+        // normal completion ("done") from user abort ("aborted") without polling.
         const cur = useSession.getState().runStatus;
-        if (cur === 'running' || cur === 'idle') setRunStatus('done');
+        const finalStatus = (ev.data as any)?.final_status;
+        if (finalStatus === 'aborted') {
+          setRunStatus('aborted');
+        } else if (cur === 'running' || cur === 'idle') {
+          setRunStatus('done');
+        }
       }
-      if (ev.event === 'state_delta' && data?.thread_id) {
+      if (ev.event === SSE_EVENT.STATE_DELTA && data?.thread_id) {
         if (useSession.getState().runStatus === 'idle') setRunStatus('running');
         try {
           const snap = await api.getState(data.thread_id);
@@ -310,6 +329,25 @@ export default function RequirementPage() {
     }
   };
 
+  // ---- auto-reconnect on mount if a run is live ----
+  useEffect(() => {
+    const s = useSession.getState();
+    if (!s.threadId || s.runStatus !== 'running') return;
+    let cancelled = false;
+    setLoading(true);
+    consumeEvents(s.threadId)
+      .catch(() => {
+        if (!cancelled) setRunStatus('failed');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---- submissions ----
   const onSubmitFresh = async (values: any) => {
     reset();
@@ -320,8 +358,8 @@ export default function RequirementPage() {
     setRunStatus('running');
     setLoading(true);
     try {
-      const res = await api.createRun(values.user_input, tid);
-      await consumeStream(res);
+      await api.createRun(values.user_input, tid);
+      await consumeEvents(tid);
     } catch (e: any) {
       setRunStatus('failed');
       message.error(e.message);
@@ -341,8 +379,8 @@ export default function RequirementPage() {
     setRunStatus('running');
     setLoading(true);
     try {
-      const res = await api.resume(threadId, { answers });
-      await consumeStream(res);
+      await api.resume(threadId, { answers });
+      await consumeEvents(threadId);
     } catch (e: any) {
       setRunStatus('failed');
       message.error(e.message);
@@ -366,11 +404,11 @@ export default function RequirementPage() {
     setEditedFiles({});
     setHint('');
     setAction('retry');
-    setRunStatus(action === 'abort' ? 'failed' : 'running');
+    setRunStatus(action === 'abort' ? 'cancelled' : 'running');
     setLoading(true);
     try {
-      const res = await api.resume(threadId, payload);
-      await consumeStream(res);
+      await api.resume(threadId, payload);
+      await consumeEvents(threadId);
     } catch (e: any) {
       setRunStatus('failed');
       message.error(e.message);
@@ -385,7 +423,7 @@ export default function RequirementPage() {
   const checks = latestState?.values.check_results || {};
 
   // ---- composer mode ----
-  type Mode = 'fresh' | 'waiting' | 'clarify' | 'hitl' | 'finished' | 'failed';
+  type Mode = 'fresh' | 'waiting' | 'clarify' | 'hitl' | 'finished' | 'aborted' | 'failed';
   const mode: Mode =
     clarifyPayload
       ? 'clarify'
@@ -395,6 +433,8 @@ export default function RequirementPage() {
       ? 'waiting'
       : runStatus === 'done'
       ? 'finished'
+      : runStatus === 'aborted'
+      ? 'aborted'
       : runStatus === 'failed'
       ? 'failed'
       : 'fresh';
@@ -426,15 +466,7 @@ export default function RequirementPage() {
 
       {runStatus !== 'idle' && (
         <Alert
-          type={
-            runStatus === 'running'
-              ? 'info'
-              : runStatus === 'done'
-              ? 'success'
-              : runStatus === 'hitl'
-              ? 'warning'
-              : 'error'
-          }
+          type={RUN_STATUS_ALERT[runStatus] ?? 'info'}
           showIcon
           message={
             runStatus === 'running'
@@ -442,9 +474,15 @@ export default function RequirementPage() {
                   latestState?.next?.[0] ? ` — current node: ${latestState.next[0]}` : '…'
                 }`
               : runStatus === 'done'
-              ? 'Run completed'
+              ? 'Run completed successfully'
               : runStatus === 'hitl'
               ? `Waiting for your input${elapsed ? ` · ${elapsed}` : ''}`
+              : runStatus === 'aborted'
+              ? 'Run aborted by user — no artifact was produced'
+              : runStatus === 'cancelled'
+              ? `Run cancelled (client disconnected)${
+                  latestState?.next?.[0] ? ` — paused at: ${latestState.next[0]}` : ''
+                }`
               : 'Run failed'
           }
           description={
@@ -585,6 +623,8 @@ export default function RequirementPage() {
             ? 'Your decision'
             : mode === 'finished'
             ? 'Run completed'
+            : mode === 'aborted'
+            ? 'Run aborted'
             : 'Run failed'
         }
       >
@@ -720,11 +760,13 @@ export default function RequirementPage() {
           </div>
         )}
 
-        {(mode === 'finished' || mode === 'failed') && (
+        {(mode === 'finished' || mode === 'aborted' || mode === 'failed') && (
           <Space>
-            <Typography.Text type={mode === 'failed' ? 'danger' : 'secondary'}>
+            <Typography.Text type={mode === 'failed' ? 'danger' : mode === 'aborted' ? 'warning' : 'secondary'}>
               {mode === 'finished'
-                ? 'Previous run finished. Start a new requirement?'
+                ? 'Run completed successfully. Start a new requirement?'
+                : mode === 'aborted'
+                ? 'Run was aborted — no code was generated. Start a new requirement?'
                 : 'Previous run ended in failure. Start a new requirement?'}
             </Typography.Text>
             <Button

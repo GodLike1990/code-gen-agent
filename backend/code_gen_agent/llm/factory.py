@@ -6,11 +6,16 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from code_gen_agent.config import AgentConfig
+from code_gen_agent.llm.callbacks import LlmLogCallback
 from code_gen_agent.llm.providers import get_spec
 from code_gen_agent.llm.usage import UsageTracker
 
 
-def create_chat_model(cfg: AgentConfig, usage: UsageTracker | None = None) -> BaseChatModel:
+def create_chat_model(
+    cfg: AgentConfig,
+    usage: UsageTracker | None = None,
+    thread_id: str | None = None,
+) -> BaseChatModel:
     """Create a chat model using only `provider` + `api_key` (+ optional overrides)."""
     if not cfg.api_key:
         raise ValueError(
@@ -23,14 +28,17 @@ def create_chat_model(cfg: AgentConfig, usage: UsageTracker | None = None) -> Ba
     # Only trim whitespace. Some corporate OpenAI-compatible proxies
     # REQUIRE a trailing '#' as a routing sentinel and must NOT be sanitized.
     base_url = raw_base.strip() if raw_base else None
-    callbacks = [usage] if usage is not None else None
+
+    callbacks: list[Any] = []
+    if usage is not None:
+        callbacks.append(usage)
+    callbacks.append(LlmLogCallback(thread_id=thread_id))
 
     common: dict[str, Any] = {
         "temperature": cfg.temperature,
         "timeout": cfg.request_timeout,
+        "callbacks": callbacks,
     }
-    if callbacks is not None:
-        common["callbacks"] = callbacks
 
     if cfg.provider in ("openai", "deepseek"):
         from langchain_openai import ChatOpenAI

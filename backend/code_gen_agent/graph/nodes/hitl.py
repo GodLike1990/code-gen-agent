@@ -39,6 +39,7 @@ class HitlNode(BaseNode):
         updates: dict[str, Any] = {
             "hitl_decision": decision,
             "escalated": True,
+            "next_action": action,
             "events": [{"type": "hitl_decision", "action": action}],
         }
 
@@ -54,8 +55,5 @@ class HitlNode(BaseNode):
             updates["generated_files"] = patched
             updates["check_results"] = {}
             updates["repair_attempts"] = 0
-        elif action == "abort":
-            updates["check_results"] = {
-                "_aborted": {"passed": True, "severity": "info", "raw_output": "aborted by user"}
-            }
+        # abort: no extra state mutation needed — router will send to END
         return updates

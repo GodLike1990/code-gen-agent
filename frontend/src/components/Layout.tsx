@@ -23,16 +23,20 @@ const STATUS_COLOR: Record<RunStatus, string> = {
   idle: '#bbb',
   running: '#1677ff',
   done: '#52c41a',
+  aborted: '#fa8c16',
   failed: '#ff4d4f',
   hitl: '#faad14',
+  cancelled: '#9ca3af',
 };
 
 const STATUS_TEXT: Record<RunStatus, string> = {
   idle: 'Idle — no active run',
   running: 'Running — click to open Graph',
-  done: 'Last run completed',
+  done: 'Last run completed successfully',
+  aborted: 'Run aborted by user',
   failed: 'Last run failed',
   hitl: 'Input needed — back to Requirement',
+  cancelled: 'Last run cancelled (client disconnected)',
 };
 
 function StatusDot({ status, onClick }: { status: RunStatus; onClick: () => void }) {
@@ -74,7 +78,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!threadId) return;
     if (hitlPayload || clarifyPayload) return; // already have one
-    if (runStatus === 'done' || runStatus === 'failed') return;
+    if (runStatus === 'done' || runStatus === 'failed' || runStatus === 'aborted') return;
 
     let cancelled = false;
     const probe = async () => {

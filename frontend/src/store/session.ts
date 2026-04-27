@@ -8,7 +8,23 @@ export interface TimelineEvent {
   data: unknown;
 }
 
-export type RunStatus = 'idle' | 'running' | 'done' | 'failed' | 'hitl';
+/**
+ * RunStatus is a superset of the backend RequirementRecord.status values.
+ *
+ * Backend statuses (written to RequestStore by streaming.py):
+ *   running | done | aborted | failed | interrupted | cancelled
+ *
+ * Frontend-only additions:
+ *   idle   — no run has started in this session yet
+ *   hitl   — alias for backend "interrupted"; the agent is paused waiting for
+ *            human input.  The mapping is applied in RequirementPage.tsx when
+ *            reading RequirementRecord.status from the API:
+ *              rec.status === 'interrupted'  →  setRunStatus('hitl')
+ *
+ * The "hitl" alias exists so UI components can use a more descriptive name
+ * while the backend uses the generic LangGraph term "interrupted".
+ */
+export type RunStatus = 'idle' | 'running' | 'done' | 'aborted' | 'failed' | 'hitl' | 'cancelled';
 
 export interface HitlPayload {
   thread_id?: string;
@@ -88,10 +104,18 @@ export const useSession = create<SessionState>()(
       // bumping `version` in the future forces us to write a real migration
       // rather than silently dropping old payloads.
       migrate: (state) => state as SessionState,
-      // Don't persist the streaming `events` buffer (can be huge);
-      // keep only the bits needed to re-enter the session on refresh.
-      // hitlPayload / clarifyPayload MUST survive reload so the user can
-      // still submit a decision after navigating away or refreshing.
+      // Selective persistence: only the fields needed to re-enter an in-flight
+      // session on reload are persisted to localStorage.
+      //
+      // Persisted (survive reload):
+      //   threadId, runStatus, hitlPayload, clarifyPayload — needed to know
+      //     whether a run is active and whether user input is pending
+      //   latestState, usage — last known agent state + token counts
+      //   interruptedAt — used to show elapsed wait time in the HITL banner
+      //
+      // NOT persisted (intentionally excluded):
+      //   events — the SSE event buffer can be large (up to 500 frames) and
+      //     is ephemeral by nature; replaying it on reload would be misleading
       partialize: (s) => ({
         threadId: s.threadId,
         latestState: s.latestState,

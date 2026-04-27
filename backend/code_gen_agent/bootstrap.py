@@ -15,6 +15,7 @@ import os
 from code_gen_agent import AgentConfig, CodeGenAgent
 from code_gen_agent.observability.logger import get_logger
 from code_gen_agent.persistence import RequestStore
+from code_gen_agent.runtime import Runner
 
 log = get_logger("bootstrap")
 
@@ -73,6 +74,11 @@ def init_config_from_env() -> AgentConfig:
 def init_request_store(cfg: AgentConfig) -> RequestStore:
     """Per-request file store, decoupled from the graph checkpointer."""
     return RequestStore(cfg.requests_dir)
+
+
+def init_runner() -> Runner:
+    """Create the background run manager (one per application instance)."""
+    return Runner()
 
 
 def init_agent(cfg: AgentConfig | None = None) -> CodeGenAgent:

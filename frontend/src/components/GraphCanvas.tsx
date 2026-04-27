@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactFlow, { Background, Controls, Edge, Node, Position } from 'reactflow';
 import { GraphSchema } from '../api/types';
+import { NODE_STATUS_COLOR } from '../constants/status';
 
 interface Props {
   schema: GraphSchema;
   activeNode: string | null;
-  nodeStatus: Record<string, 'pending' | 'running' | 'success' | 'failed' | 'interrupted'>;
+  nodeStatus: Record<string, 'pending' | 'running' | 'paused' | 'success' | 'failed' | 'interrupted' | 'cancelled'>;
   onSelect: (id: string | null) => void;
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: '#d9d9d9',
-  running: '#1677ff',
-  success: '#52c41a',
-  failed: '#ff4d4f',
-  interrupted: '#faad14',
-};
 
 function columnFor(id: string): number {
   const order = ['intent', 'clarify', 'decompose', 'codegen', 'checks', 'repair', 'hitl'];
@@ -39,8 +32,10 @@ export default function GraphCanvas({ schema, activeNode, nodeStatus, onSelect }
         targetPosition: Position.Left,
         style: {
           padding: 10,
-          border: `2px solid ${isActive ? '#722ed1' : STATUS_COLORS[status]}`,
-          background: STATUS_COLORS[status] + '22',
+          border: `2px ${status === 'paused' || status === 'cancelled' ? 'dashed' : 'solid'} ${isActive ? '#722ed1' : NODE_STATUS_COLOR[status] ?? '#d9d9d9'}`,
+          background: (NODE_STATUS_COLOR[status] ?? '#d9d9d9') + (status === 'success' ? '33' : status === 'pending' ? '18' : '22'),
+          opacity: status === 'paused' || status === 'cancelled' ? 0.7 : 1,
+          fontWeight: status === 'running' || status === 'success' ? 600 : 400,
           whiteSpace: 'pre-wrap',
           textAlign: 'center',
           borderRadius: 8,

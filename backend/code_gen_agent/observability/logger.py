@@ -10,6 +10,23 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
+# Standard LogRecord attributes that must not be forwarded as custom extras.
+_STDLIB_ATTRS = frozenset({
+    "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+    "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+    "created", "msecs", "relativeCreated", "thread", "threadName",
+    "processName", "process", "message", "taskName",
+})
+
+
+def _extra_fields(record: logging.LogRecord) -> dict[str, Any]:
+    """Return all non-stdlib attributes set via ``extra=`` on the record."""
+    return {
+        k: v
+        for k, v in record.__dict__.items()
+        if k not in _STDLIB_ATTRS and not k.startswith("_")
+    }
+
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -19,10 +36,8 @@ class _JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        for key in ("thread_id", "node", "duration_ms", "event"):
-            val = getattr(record, key, None)
-            if val is not None:
-                payload[key] = val
+        # Merge all extra fields so callers can pass arbitrary structured data.
+        payload.update(_extra_fields(record))
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)
@@ -42,15 +57,14 @@ class LogCollector(logging.Handler):
         tid = getattr(record, "thread_id", None)
         if not tid:
             return
-        entry = {
+        entry: dict[str, Any] = {
             "ts": round(time.time(), 3),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
-            "node": getattr(record, "node", None),
-            "duration_ms": getattr(record, "duration_ms", None),
-            "event": getattr(record, "event", None),
         }
+        # Merge all extra fields for full fidelity in the in-memory collector.
+        entry.update(_extra_fields(record))
         with self._lock:
             self._store[tid].append(entry)
 
@@ -63,7 +77,13 @@ _collector: LogCollector | None = None
 
 
 def configure_logging(level: str = "INFO", log_file: str | None = None) -> LogCollector:
-    """Set up root logger with JSON formatter and in-memory collector."""
+    """Set up root logger with JSON formatter and in-memory collector.
+
+    When ``log_file`` is provided logs go to the rotating file only (no
+    console noise). Without a log file, stdout is used as a fallback so
+    the service remains debuggable in environments where file logging is
+    unavailable.
+    """
     global _collector
     root = logging.getLogger("code_gen_agent")
     root.setLevel(level.upper())
@@ -72,9 +92,7 @@ def configure_logging(level: str = "INFO", log_file: str | None = None) -> LogCo
         root.removeHandler(h)
 
     fmt = _JsonFormatter()
-    sh = logging.StreamHandler()
-    sh.setFormatter(fmt)
-    root.addHandler(sh)
+    file_handler_added = False
 
     if log_file:
         try:
@@ -87,10 +105,16 @@ def configure_logging(level: str = "INFO", log_file: str | None = None) -> LogCo
             )
             fh.setFormatter(fmt)
             root.addHandler(fh)
+            file_handler_added = True
         except OSError as exc:
-            # Don't let a log-dir permission issue take the server down;
-            # stdout logging still works.
+            # Fall back to stdout when the log directory is not writable.
             root.warning("failed to enable file logging at %s: %s", log_file, exc)
+
+    if not file_handler_added:
+        # No file handler available — use stdout as fallback only.
+        sh = logging.StreamHandler()
+        sh.setFormatter(fmt)
+        root.addHandler(sh)
 
     _collector = LogCollector()
     root.addHandler(_collector)

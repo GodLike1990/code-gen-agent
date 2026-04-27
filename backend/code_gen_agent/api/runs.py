@@ -1,6 +1,11 @@
 """Agent run lifecycle endpoints.
 
-Covers: create, resume, state, logs, usage, interrupt, download.
+Covers: create, resume, events subscription, state, logs, usage, interrupt, download.
+
+Architecture (A1):
+- POST /agent/runs        → schedule background task, return {"thread_id", "status"}
+- POST /agent/runs/{tid}/resume → same: schedule resume, return immediately
+- GET  /agent/runs/{tid}/events → SSE stream from the per-thread replay buffer
 """
 from __future__ import annotations
 
@@ -12,11 +17,12 @@ from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
 
 from code_gen_agent import CodeGenAgent
-from code_gen_agent.api.deps import get_agent, get_request_store, valid_tid
+from code_gen_agent.api.deps import get_agent, get_request_store, get_runner, valid_tid
 from code_gen_agent.api.schemas import CreateRunRequest, ResumeRequest
-from code_gen_agent.api.streaming import stream_run
+from code_gen_agent.graph.constants import STATUS_RUNNING
 from code_gen_agent.observability.logger import get_logger
 from code_gen_agent.persistence import RequestStore
+from code_gen_agent.runtime import RunConflictError, RunNotFoundError, Runner
 
 log = get_logger("server")
 
@@ -38,7 +44,9 @@ async def create_run(
     request: Request,
     agent: CodeGenAgent = Depends(get_agent),
     store: RequestStore = Depends(get_request_store),
-) -> Any:
+    runner: Runner = Depends(get_runner),
+) -> dict:
+    """Start a new run in the background and return immediately."""
     tid = req.thread_id or agent.new_thread_id()
     _track(request, tid)
     log.info(
@@ -51,14 +59,11 @@ async def create_run(
         },
     )
     store.save(tid, req.user_input)
-    return EventSourceResponse(
-        stream_run(
-            agent.astream(req.user_input, thread_id=tid),
-            tid=tid,
-            store=store,
-            logger=log,
-        )
-    )
+    try:
+        runner.start_run(agent, tid, req.user_input, store, log)
+    except RunConflictError as e:
+        raise HTTPException(409, str(e))
+    return {"thread_id": tid, "status": STATUS_RUNNING}
 
 
 @router.post("/{thread_id}/resume")
@@ -68,18 +73,34 @@ async def resume(
     thread_id: str = Depends(valid_tid),
     agent: CodeGenAgent = Depends(get_agent),
     store: RequestStore = Depends(get_request_store),
-) -> Any:
+    runner: Runner = Depends(get_runner),
+) -> dict:
+    """Resume a paused run in the background and return immediately."""
     _track(request, thread_id)
     log.info("run_resume", extra={"thread_id": thread_id, "event": "run_resume"})
-    store.update(thread_id, status="running")
-    return EventSourceResponse(
-        stream_run(
-            agent.aresume(thread_id, req.human_feedback),
-            tid=thread_id,
-            store=store,
-            logger=log,
-        )
-    )
+    store.update(thread_id, status=STATUS_RUNNING)
+    try:
+        runner.resume_run(agent, thread_id, req.human_feedback, store, log)
+    except RunConflictError as e:
+        raise HTTPException(409, str(e))
+    return {"thread_id": thread_id, "status": STATUS_RUNNING}
+
+
+@router.get("/{thread_id}/events")
+async def stream_events(
+    thread_id: str = Depends(valid_tid),
+    runner: Runner = Depends(get_runner),
+) -> Any:
+    """SSE endpoint: replay buffered frames then stream live frames.
+
+    Clients connect here after receiving ``thread_id`` from POST /agent/runs.
+    They can reconnect at any time; buffered frames ensure they catch up.
+    """
+    try:
+        gen = runner.subscribe(thread_id)
+    except RunNotFoundError as e:
+        raise HTTPException(404, str(e))
+    return EventSourceResponse(gen)
 
 
 @router.get("/{thread_id}/state")
@@ -138,12 +159,7 @@ def get_interrupt(
     thread_id: str = Depends(valid_tid),
     agent: CodeGenAgent = Depends(get_agent),
 ) -> dict:
-    """Return the pending interrupt (if any) so the UI can recover on reload.
-
-    We derive the payload from `get_state(tid)` — which already exposes
-    `next` and `values` — instead of stashing the original interrupt value
-    anywhere. That avoids a second source of truth.
-    """
+    """Return the pending interrupt (if any) so the UI can recover on reload."""
     try:
         snap = agent.get_state(thread_id)
     except Exception as e:

@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Path, Request
 
 from code_gen_agent import CodeGenAgent
 from code_gen_agent.persistence import RequestStore
+from code_gen_agent.runtime import Runner
 
 
 def get_agent(request: Request) -> CodeGenAgent:
@@ -26,6 +27,13 @@ def get_request_store(request: Request) -> RequestStore:
     return store
 
 
+def get_runner(request: Request) -> Runner:
+    runner = getattr(request.app.state, "runner", None)
+    if runner is None:
+        raise HTTPException(500, "runner not initialised")
+    return runner
+
+
 def valid_tid(thread_id: str = Path(...)) -> str:
     """Reject empty / path-separator thread ids early with HTTP 400."""
     if not thread_id or "/" in thread_id or "\\" in thread_id or ".." in thread_id:
@@ -35,4 +43,4 @@ def valid_tid(thread_id: str = Path(...)) -> str:
 
 # Re-export `Depends` so routers can `from .deps import Depends, ...`
 # if they prefer a single import source.
-__all__ = ["Depends", "get_agent", "get_request_store", "valid_tid"]
+__all__ = ["Depends", "get_agent", "get_request_store", "get_runner", "valid_tid"]

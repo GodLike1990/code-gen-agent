@@ -93,7 +93,7 @@ export interface RequirementRecord {
   created_at: string;
   updated_at: string;
   request: string;
-  status: 'running' | 'done' | 'failed' | 'interrupted';
+  status: 'running' | 'done' | 'aborted' | 'failed' | 'interrupted' | 'cancelled';
   summary: string | null;
 }
 

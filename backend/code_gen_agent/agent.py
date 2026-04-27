@@ -137,7 +137,7 @@ class CodeGenAgent:
         if thread_id in self._graphs:
             return self._graphs[thread_id]
         tracker = self.usage.get_or_create(thread_id)
-        llm = create_chat_model(self.config, usage=tracker)
+        llm = create_chat_model(self.config, usage=tracker, thread_id=thread_id)
         self._llms[thread_id] = llm
         graph = build_graph(
             llm=llm,

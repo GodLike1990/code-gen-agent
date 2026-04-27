@@ -1,4 +1,15 @@
-"""Assemble a LangGraph StateGraph from registered nodes."""
+"""Assemble a LangGraph StateGraph from registered nodes.
+
+GRAPH TOPOLOGY
+──────────────
+The GRAPH_TOPOLOGY constant below serves dual purpose:
+1. It is the authoritative definition of every node id and edge label.
+2. It is serialised and returned by GET /agent/graph/schema so the frontend
+   ReactFlow canvas can render the live graph without any hard-coding.
+
+Any topology change (add/remove node, change edge) must be reflected here
+*and* in the actual add_node / add_edge calls in build_graph().
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -6,9 +17,22 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
+from code_gen_agent.graph.constants import (
+    NODE_CHECKS,
+    NODE_CLARIFY,
+    NODE_CODEGEN,
+    NODE_DECOMPOSE,
+    NODE_HITL,
+    NODE_INTENT,
+    NODE_PACKAGE,
+    NODE_REPAIR,
+    NODE_VERIFY,
+    ROUTE_END,
+)
 from code_gen_agent.graph.registry import NodeRegistry
 from code_gen_agent.graph.routing import (
     route_after_checks,
+    route_after_hitl,
     route_after_intent,
     route_after_repair,
     route_after_verify,
@@ -17,41 +41,45 @@ from code_gen_agent.graph.state import AgentState
 from code_gen_agent.prompts.loader import PromptRegistry
 
 
-# Static topology description (also used by the frontend graph page).
+# Static topology description — also consumed by the frontend graph visualisation
+# via GET /agent/graph/schema.  Node ids here must match the add_node() keys
+# in build_graph(), and edge sources/targets must be valid node ids or the
+# special sentinels "__start__" / "__end__".
 GRAPH_TOPOLOGY: dict[str, Any] = {
     "nodes": [
-        {"id": "intent", "label": "Intent"},
-        {"id": "clarify", "label": "Clarify (HITL)"},
-        {"id": "decompose", "label": "Decompose"},
-        {"id": "codegen", "label": "Code Gen"},
-        {"id": "checks", "label": "Checks"},
-        {"id": "repair", "label": "Repair"},
-        {"id": "hitl", "label": "HITL Escalation"},
-        {"id": "verify", "label": "Verify (acceptance)"},
-        {"id": "package", "label": "Package (zip)"},
+        {"id": NODE_INTENT,    "label": "Intent"},
+        {"id": NODE_CLARIFY,   "label": "Clarify (HITL)"},
+        {"id": NODE_DECOMPOSE, "label": "Decompose"},
+        {"id": NODE_CODEGEN,   "label": "Code Gen"},
+        {"id": NODE_CHECKS,    "label": "Checks"},
+        {"id": NODE_REPAIR,    "label": "Repair"},
+        {"id": NODE_HITL,      "label": "HITL Escalation"},
+        {"id": NODE_VERIFY,    "label": "Verify (acceptance)"},
+        {"id": NODE_PACKAGE,   "label": "Package (zip)"},
     ],
     "edges": [
-        {"source": "__start__", "target": "intent"},
-        {"source": "intent", "target": "clarify", "label": "need info"},
-        {"source": "intent", "target": "decompose", "label": "ok"},
-        {"source": "clarify", "target": "intent"},
-        {"source": "decompose", "target": "codegen"},
-        {"source": "codegen", "target": "checks"},
-        {"source": "checks", "target": "verify", "label": "all pass"},
-        {"source": "checks", "target": "repair", "label": "fail"},
-        {"source": "repair", "target": "codegen", "label": "attempts<max"},
-        {"source": "repair", "target": "hitl", "label": "attempts>=max"},
-        {"source": "hitl", "target": "codegen"},
-        {"source": "verify", "target": "package", "label": "accepted"},
-        {"source": "verify", "target": "repair", "label": "gaps (retry)"},
-        {"source": "verify", "target": "hitl", "label": "gaps persist"},
-        {"source": "package", "target": "__end__"},
+        {"source": "__start__",  "target": NODE_INTENT},
+        {"source": NODE_INTENT,  "target": NODE_CLARIFY,  "label": "need info"},
+        {"source": NODE_INTENT,  "target": NODE_DECOMPOSE, "label": "ok"},
+        {"source": NODE_CLARIFY, "target": NODE_INTENT},
+        {"source": NODE_DECOMPOSE, "target": NODE_CODEGEN},
+        {"source": NODE_CODEGEN,   "target": NODE_CHECKS},
+        {"source": NODE_CHECKS,    "target": NODE_VERIFY,  "label": "all pass"},
+        {"source": NODE_CHECKS,    "target": NODE_REPAIR,  "label": "fail"},
+        {"source": NODE_REPAIR,    "target": NODE_CODEGEN, "label": "attempts<max"},
+        {"source": NODE_REPAIR,    "target": NODE_HITL,    "label": "attempts>=max"},
+        {"source": NODE_HITL,      "target": NODE_CODEGEN, "label": "retry/patch"},
+        {"source": NODE_HITL,      "target": "__end__",    "label": "abort"},
+        {"source": NODE_VERIFY,    "target": NODE_PACKAGE, "label": "accepted"},
+        {"source": NODE_VERIFY,    "target": NODE_REPAIR,  "label": "gaps (retry)"},
+        {"source": NODE_VERIFY,    "target": NODE_HITL,    "label": "gaps persist"},
+        {"source": NODE_PACKAGE,   "target": "__end__"},
     ],
 }
 
 
 def get_graph_schema() -> dict[str, Any]:
-    """Return the static topology for the frontend visualization."""
+    """Return the static topology for the frontend visualisation."""
     return GRAPH_TOPOLOGY
 
 
@@ -61,23 +89,31 @@ def build_graph(
     checkpointer: Any,
     enabled_nodes: list[str] | None = None,
 ):
-    """Instantiate registered nodes and build the LangGraph.
+    """Instantiate registered nodes and build the compiled LangGraph.
 
-    `enabled_nodes` lets callers disable nodes by name; unknown names raise.
+    Args:
+        llm: Shared chat model instance passed to every node.
+        prompts: Loaded prompt registry (YAML templates).
+        checkpointer: LangGraph state persistence backend.
+        enabled_nodes: Optional allowlist of node names.  When provided, only
+            nodes in this list are added to the graph; any name not in the
+            registry raises RuntimeError.  Pass None to enable all nodes.
+            Note: disabling required nodes will produce an incomplete graph
+            that may raise at runtime — use only for testing partial flows.
     """
-    # Ensure all built-in nodes are imported/registered.
+    # Ensure all built-in nodes are imported/registered before checking.
     import code_gen_agent.graph.nodes  # noqa: F401
 
     required = [
-        "intent",
-        "clarify",
-        "decompose",
-        "codegen",
-        "checks",
-        "repair",
-        "hitl",
-        "verify",
-        "package",
+        NODE_INTENT,
+        NODE_CLARIFY,
+        NODE_DECOMPOSE,
+        NODE_CODEGEN,
+        NODE_CHECKS,
+        NODE_REPAIR,
+        NODE_HITL,
+        NODE_VERIFY,
+        NODE_PACKAGE,
     ]
     missing = [n for n in required if n not in NodeRegistry.names()]
     if missing:
@@ -85,7 +121,7 @@ def build_graph(
 
     graph = StateGraph(AgentState)
 
-    # Instantiate all nodes with shared llm/prompts
+    # Instantiate all (or allowed) nodes with shared llm/prompts.
     node_instances = {}
     for name in required:
         if enabled_nodes is not None and name not in enabled_nodes:
@@ -94,24 +130,31 @@ def build_graph(
         node_instances[name] = cls(llm=llm, prompts=prompts)
         graph.add_node(name, node_instances[name])
 
-    # Wire topology
-    graph.add_edge(START, "intent")
+    # Wire topology — must mirror GRAPH_TOPOLOGY edges above.
+    graph.add_edge(START, NODE_INTENT)
     graph.add_conditional_edges(
-        "intent", route_after_intent, {"clarify": "clarify", "decompose": "decompose"}
+        NODE_INTENT, route_after_intent,
+        {NODE_CLARIFY: NODE_CLARIFY, NODE_DECOMPOSE: NODE_DECOMPOSE},
     )
-    graph.add_edge("clarify", "intent")
-    graph.add_edge("decompose", "codegen")
-    graph.add_edge("codegen", "checks")
+    graph.add_edge(NODE_CLARIFY, NODE_INTENT)
+    graph.add_edge(NODE_DECOMPOSE, NODE_CODEGEN)
+    graph.add_edge(NODE_CODEGEN, NODE_CHECKS)
     graph.add_conditional_edges(
-        "checks", route_after_checks, {"verify": "verify", "repair": "repair"}
+        NODE_CHECKS, route_after_checks,
+        {NODE_VERIFY: NODE_VERIFY, NODE_REPAIR: NODE_REPAIR},
     )
     graph.add_conditional_edges(
-        "repair", route_after_repair, {"codegen": "codegen", "hitl": "hitl"}
+        NODE_REPAIR, route_after_repair,
+        {NODE_CODEGEN: NODE_CODEGEN, NODE_HITL: NODE_HITL},
     )
-    graph.add_edge("hitl", "codegen")
     graph.add_conditional_edges(
-        "verify", route_after_verify, {"package": "package", "repair": "repair", "hitl": "hitl"}
+        NODE_HITL, route_after_hitl,
+        {NODE_CODEGEN: NODE_CODEGEN, ROUTE_END: END},
     )
-    graph.add_edge("package", END)
+    graph.add_conditional_edges(
+        NODE_VERIFY, route_after_verify,
+        {NODE_PACKAGE: NODE_PACKAGE, NODE_REPAIR: NODE_REPAIR, NODE_HITL: NODE_HITL},
+    )
+    graph.add_edge(NODE_PACKAGE, END)
 
     return graph.compile(checkpointer=checkpointer)

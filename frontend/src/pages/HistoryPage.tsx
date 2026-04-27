@@ -5,13 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { RequirementRecord } from '../api/types';
 import { useSession } from '../store/session';
-
-const statusColor: Record<string, string> = {
-  running: 'processing',
-  done: 'success',
-  failed: 'error',
-  interrupted: 'warning',
-};
+import { RUN_STATUS_COLOR, RUN_STATUS_LABEL } from '../constants/status';
 
 function truncate(s: string, n = 80): string {
   if (!s) return '';
@@ -88,7 +82,7 @@ export default function HistoryPage() {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (v: string) => <Tag color={statusColor[v] || 'default'}>{v}</Tag>,
+      render: (v: string) => <Tag color={RUN_STATUS_COLOR[v] ?? 'default'}>{RUN_STATUS_LABEL[v] ?? v}</Tag>,
     },
     {
       title: 'Action',
