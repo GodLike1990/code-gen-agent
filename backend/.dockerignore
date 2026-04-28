@@ -1,0 +1,32 @@
+# Python build artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+
+# Secrets — never bake into the image; injected at runtime via env_file
+.env
+.env.*
+
+# Runtime data — mounted as volumes; must not be baked in
+data/
+logs/
+*.sqlite
+*.sqlite3
+.agent_state*
+
+# Dev-only files
+tests/
+examples/
+configs/
+Makefile
+README.md
+.gitignore
+
+# Node / frontend (just in case)
+node_modules/

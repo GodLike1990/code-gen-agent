@@ -41,7 +41,10 @@ Graph nodes:
 
 ```
 .
-├── backend/              # Python package + FastAPI server
+├── docker-compose.yml        # One-command full-stack startup
+├── backend/
+│   ├── Dockerfile            # Multi-stage Python image
+│   ├── .dockerignore
 │   ├── code_gen_agent/
 │   │   ├── agent.py          # top-level facade
 │   │   ├── config.py         # AgentConfig
@@ -60,6 +63,9 @@ Graph nodes:
 │   ├── examples/
 │   └── configs/
 └── frontend/             # React + TypeScript UI
+    ├── Dockerfile            # Multi-stage Node → nginx image
+    ├── .dockerignore
+    ├── nginx.conf            # SPA routing + /agent/* proxy + SSE config
     └── src/
         ├── api/          # client + SSE reader + types
         ├── store/        # Zustand session store
@@ -69,35 +75,32 @@ Graph nodes:
 
 ## Setup & Run
 
-### Backend
-
-`.env` is the **single source of truth** for environment and components.
-The Makefile reads it and acts accordingly — no need to pass flags.
+### Docker
 
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-cp .env.example .env        # then edit: AGENT_API_KEY, APP_ENV, ENABLE_*
-make install                # installs deps based on APP_ENV in .env
-make run                    # starts FastAPI server on :8000
+cp backend/.env.example backend/.env
+# 编辑 backend/.env，至少填写 AGENT_API_KEY
+docker compose up --build
 ```
 
-Other targets: `make help` / `make test` / `make lint` / `make fmt` / `make clean`.
+访问：
+- 前端：http://localhost
+- 后端 API：http://localhost:8000
 
-**`.env` controls everything:**
+**`backend/.env` 关键配置项：**
 
 | Key | Values | Effect |
 |---|---|---|
-| `APP_ENV` | `dev` (default) / `prod` / `full` | Installs `.[dev]` / `.` / `.[dev,redis,postgres]` |
-| `ENABLE_LANGSMITH` | `true` / `false` | Toggles LangSmith tracing |
-| `ENABLE_LLM_REVIEW` | `true` / `false` | Toggles LLM self-review checker |
-| `ENABLE_SECURITY_CHECK` | `true` / `false` | Toggles security checker |
-| `ENABLE_TEST_CHECK` | `true` / `false` | Toggles test runner checker |
+| `AGENT_API_KEY` | your LLM API key | **必填** |
+| `APP_ENV` | `dev` (default) / `prod` / `full` | 控制安装的依赖范围 |
+| `ENABLE_LANGSMITH` | `true` / `false` | 开启 LangSmith tracing |
+| `ENABLE_LLM_REVIEW` | `true` / `false` | 开启 LLM 自审 checker |
+| `ENABLE_SECURITY_CHECK` | `true` / `false` | 开启安全 checker |
+| `ENABLE_TEST_CHECK` | `true` / `false` | 开启测试运行 checker |
 
-Minimal startup = `APP_ENV=dev` + only `lint`/`compile` checkers enabled.
-To switch environments, just edit `.env` and re-run `make install && make run`.
+完整配置项见 `backend/.env.example` 和 `backend/code_gen_agent/config.py`。
 
-### Runtime data layout (backend)
+### Runtime data layout
 
 The backend uses **three decoupled on-disk stores** — each with a single responsibility:
 
@@ -114,16 +117,6 @@ where the checkpointer replays the saved state.
 
 All three locations are gitignored (empty dirs kept via `.gitkeep`); override with
 `AGENT_LOG_FILE` / `AGENT_REQUESTS_DIR` / `AGENT_WORKSPACE_ROOT` / `AGENT_STATE_DSN` in `.env`.
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Frontend on `:5173`, proxies `/agent/*` to backend.
 
 ### Library Usage
 
@@ -212,9 +205,7 @@ Five suites ship with the repo:
 - **Download ZIP returns 404** — the archive is only built by the `package`
   node at the end of a successful run. If a run stops at HITL / clarify, the
   artifact does not exist yet; resume and let it finish first.
-- **Frontend cannot reach backend** — the Vite dev server proxies `/agent/*`
-  to `http://localhost:8000`. Confirm the backend is running on that port
-  (`make run`) and that nothing else is listening on it.
+- **Frontend cannot reach backend** — nginx proxies `/agent/*` to `http://backend:8000` inside the container. Confirm both services started (`docker compose ps`) and that nothing else is occupying port 80 or 8000 on the host.
 
 ## License
 

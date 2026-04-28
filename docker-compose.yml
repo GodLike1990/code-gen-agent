@@ -1,0 +1,72 @@
+# =============================================================================
+# docker-compose.yml
+#
+# Orchestrates two services:
+#   backend  — FastAPI + LangGraph agent (port 8000)
+#   frontend — Nginx serving the Vite build, proxying /agent/* to backend
+#
+# Quick start:
+#   1. cp backend/.env.example backend/.env
+#   2. Edit backend/.env — at minimum set AGENT_API_KEY
+#   3. docker compose up --build
+#
+# Access:
+#   Frontend:   http://localhost
+#   Backend API: http://localhost:8000  (optional direct access)
+#
+# Data persistence:
+#   backend/data/   — request records + generated workspaces (bind mount)
+#   backend/logs/   — structured JSON logs (bind mount)
+#   SQLite state is stored at backend/data/.agent_state.sqlite
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Backend: FastAPI + LangGraph agent
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # Inject secrets at runtime — .env is gitignored and never baked into image
+    env_file:
+      - ./backend/.env
+    # Override paths to container-absolute locations (matching volume mounts)
+    environment:
+      AGENT_HOST: "0.0.0.0"
+      AGENT_PORT: "8000"
+      AGENT_STATE_DSN: "/app/data/.agent_state.sqlite"
+      AGENT_REQUESTS_DIR: "/app/data/requests"
+      AGENT_WORKSPACE_ROOT: "/app/data/workspaces"
+      AGENT_LOG_FILE: "/app/logs/agent.log"
+    volumes:
+      # Persist LangGraph state, request records, generated workspaces
+      - ./backend/data:/app/data
+      # Persist structured JSON logs
+      - ./backend/logs:/app/logs
+    ports:
+      # Expose backend port for direct API access / debugging.
+      # Remove this line in production if you only want nginx as entry point.
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Frontend: Nginx + Vite production build
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
