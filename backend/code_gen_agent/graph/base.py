@@ -1,4 +1,4 @@
-"""Base class for agent nodes with automatic logging."""
+"""节点基类，提供统一的日志记录能力。"""
 from __future__ import annotations
 
 import time
@@ -11,7 +11,7 @@ from code_gen_agent.graph.state import AgentState
 from code_gen_agent.observability.logger import get_logger
 from code_gen_agent.prompts.loader import PromptRegistry
 
-# Keys to include in the node state summary (stable, low-cardinality).
+# 纳入节点状态摘要的字段（稳定、低基数）
 _SUMMARY_KEYS = (
     "repair_attempts",
     "verify_failures",
@@ -23,9 +23,9 @@ _SUMMARY_KEYS = (
 
 
 def _state_summary(state: AgentState) -> dict[str, Any]:
-    """Return a concise, safe snapshot of key state fields.
+    """返回关键状态字段的简洁快照。
 
-    Avoids dumping generated_files / full code bodies which can be MB-sized.
+    避免转储 generated_files / 完整代码体（可能达 MB 级）。
     """
     summary: dict[str, Any] = {}
     for key in _SUMMARY_KEYS:
@@ -38,11 +38,11 @@ def _state_summary(state: AgentState) -> dict[str, Any]:
             summary[key] = len(val)
         else:
             summary[key] = val
-    # Add file count without content.
+    # 只记录文件数，不含内容
     gf = state.get("generated_files")
     if isinstance(gf, dict):
         summary["file_count"] = len(gf)
-    # Add check pass/fail summary.
+    # 记录检查通过/失败汇总
     cr = state.get("check_results")
     if isinstance(cr, dict):
         summary["checks_passed"] = sum(1 for r in cr.values() if (r or {}).get("passed"))
@@ -51,7 +51,7 @@ def _state_summary(state: AgentState) -> dict[str, Any]:
 
 
 def _update_summary(update: dict[str, Any]) -> dict[str, Any]:
-    """Return concise summary of what a node update contains."""
+    """返回节点更新内容的简洁摘要。"""
     summary: dict[str, Any] = {}
     for key in _SUMMARY_KEYS:
         val = update.get(key)
@@ -70,11 +70,11 @@ def _update_summary(update: dict[str, Any]) -> dict[str, Any]:
 
 
 class BaseNode(ABC):
-    """Abstract node. Subclasses implement `run`."""
+    """抽象节点基类，子类实现 `run` 方法。"""
 
-    #: unique registry name
+    #: 注册表中的唯一名称
     name: str = ""
-    #: prompt key this node uses (optional)
+    #: 该节点使用的 prompt key（可选）
     prompt_key: str | None = None
 
     def __init__(self, llm: BaseChatModel, prompts: PromptRegistry) -> None:
@@ -113,7 +113,7 @@ class BaseNode(ABC):
                 "update_summary": _update_summary(update),
             },
         )
-        # append event for SSE streaming
+        # 追加事件供 SSE 流式推送
         events = update.setdefault("events", [])
         events.append(
             {"type": f"node:{self.name}", "duration_ms": duration_ms, "node": self.name}
@@ -122,4 +122,4 @@ class BaseNode(ABC):
 
     @abstractmethod
     async def run(self, state: AgentState) -> dict[str, Any]:
-        """Return a partial state update dict."""
+        """返回局部状态更新字典。"""

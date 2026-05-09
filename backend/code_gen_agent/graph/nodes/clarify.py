@@ -1,4 +1,4 @@
-"""Interactive clarification node using LangGraph interrupt()."""
+"""交互式澄清节点，使用 LangGraph interrupt()。"""
 from __future__ import annotations
 
 from typing import Any
@@ -13,13 +13,23 @@ from code_gen_agent.graph.state import AgentState
 
 @register_node("clarify")
 class ClarifyNode(BaseNode):
+    """交互式澄清节点 — 当意图置信度不足时触发。
+
+    1. 调用 LLM 根据 missing_info 生成最多 3 个澄清问题。
+    2. 调用 LangGraph interrupt() 暂停执行，将问题推送给前端等待用户回答。
+    3. 用户提交答案后 resume，将问答对写入 state["clarifications"]，
+       图从 intent 节点重新执行（带上新的 clarifications）。
+
+    interrupt() 是 LangGraph 的检查点机制，暂停/恢复跨 HTTP 请求保持状态。
+    """
+
     prompt_key = "clarify"
 
     async def run(self, state: AgentState) -> dict[str, Any]:
         intent = state.get("intent") or {}
         missing = intent.get("missing_info") or []
 
-        # 1) produce up to 3 clarifying questions
+        # 1) 生成最多 3 个澄清问题
         rendered = self.prompts.render(
             "clarify", intent=intent, missing_info=missing
         )
@@ -30,7 +40,7 @@ class ClarifyNode(BaseNode):
             questions = default["questions"]
         questions = [str(q) for q in questions[:3]]
 
-        # 2) interrupt to wait for human answers
+        # 2) 暂停等待用户回答
         answers = interrupt(
             {
                 "type": "clarify",
@@ -39,7 +49,7 @@ class ClarifyNode(BaseNode):
             }
         )
 
-        # 3) persist answers back into state
+        # 3) 将答案写回 state
         if isinstance(answers, dict):
             answer_list = answers.get("answers") or []
         elif isinstance(answers, list):

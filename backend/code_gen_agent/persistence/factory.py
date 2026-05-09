@@ -1,11 +1,11 @@
-"""Checkpointer factory."""
+"""检查点工厂。"""
 from __future__ import annotations
 
 from code_gen_agent.config import AgentConfig
 
 
 def create_checkpointer(cfg: AgentConfig):
-    """Create a LangGraph checkpointer based on `state_backend`."""
+    """根据 state_backend 创建 LangGraph 检查点。"""
     backend = cfg.state_backend
     dsn = cfg.state_dsn
 
@@ -14,10 +14,10 @@ def create_checkpointer(cfg: AgentConfig):
 
         return MemorySaver()
     if backend == "sqlite":
-        # Sqlite uses the async saver, which must be created inside a running
-        # event loop. See `CodeGenAgent.setup()` — the agent builds it lazily
-        # during FastAPI startup. Return None here so callers that skip setup
-        # (e.g. raw script usage) fall back to MemorySaver semantics.
+        # sqlite 使用异步 saver，必须在运行中的事件循环内创建。
+        # 见 CodeGenAgent.setup()：agent 在 FastAPI 启动时惰性构建。
+        # 此处返回 None，跳过 setup() 的调用方（如脚本模式）
+        # 将回退到 MemorySaver 语义。
         return None
     if backend == "redis":
         from code_gen_agent.persistence.redis import create_redis_checkpointer

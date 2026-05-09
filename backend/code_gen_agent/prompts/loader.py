@@ -1,4 +1,4 @@
-"""Prompt template loader with jinja2 rendering."""
+"""使用 jinja2 渲染的 Prompt 模板加载器。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,10 +9,10 @@ from jinja2 import Environment, StrictUndefined
 
 
 class PromptRegistry:
-    """Load YAML prompt templates from a directory.
+    """从目录加载 YAML Prompt 模板。
 
-    Each YAML file defines a prompt with `system` and `user` fields. The key is
-    the file stem (e.g. `intent.yaml` -> key `intent`).
+    每个 YAML 文件定义包含 system 和 user 字段的 prompt，
+    键名为文件 stem（如 intent.yaml → 键 intent）。
     """
 
     def __init__(self, prompts_dir: str | Path | None = None) -> None:
@@ -36,7 +36,7 @@ class PromptRegistry:
         return data
 
     def render(self, key: str, **variables: Any) -> dict[str, str]:
-        """Render system+user templates into concrete strings."""
+        """将 system + user 模板渲染为具体字符串。"""
         tmpl = self._load(key)
         rendered: dict[str, str] = {}
         for field in ("system", "user"):
@@ -45,5 +45,5 @@ class PromptRegistry:
         return rendered
 
     def reload(self) -> None:
-        """Clear cache to allow hot reload."""
+        """清除缓存，支持热重载。"""
         self._cache.clear()

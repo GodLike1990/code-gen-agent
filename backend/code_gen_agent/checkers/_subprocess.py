@@ -1,4 +1,4 @@
-"""Subprocess helpers for checkers."""
+"""checker 用的子进程工具函数。"""
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +7,7 @@ import asyncio
 async def run_subprocess(
     cmd: list[str], cwd: str, timeout: float = 60.0
 ) -> tuple[int, str, str]:
-    """Run a subprocess and return (rc, stdout, stderr). Timeout → rc=-1."""
+    """运行子进程并返回 (rc, stdout, stderr)，超时时 rc=-1。"""
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,

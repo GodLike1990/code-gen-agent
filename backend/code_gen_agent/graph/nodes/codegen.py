@@ -1,4 +1,4 @@
-"""Code generation node."""
+"""代码生成节点。"""
 from __future__ import annotations
 
 from typing import Any
@@ -12,6 +12,18 @@ from code_gen_agent.sandbox import Sandbox
 
 @register_node("codegen")
 class CodegenNode(BaseNode):
+    """代码生成节点 — 根据任务列表生成或修复文件。
+
+    有两种工作模式：
+    - 初次生成（repair_mode=False）：根据 tasks 生成全部文件
+    - 修复模式（repair_mode=True）：check_results 存在失败项时，
+      将失败信息和现有代码一并传给 LLM，让其生成 diff/补丁
+
+    生成的文件通过 Sandbox 写入磁盘（会校验路径，防止目录穿越）。
+    输出写入 state["generated_files"]，并重置 state["check_results"] 为空
+    以触发下一轮 checks 节点重新检查。
+    """
+
     prompt_key = "codegen"
 
     async def run(self, state: AgentState) -> dict[str, Any]:
@@ -26,7 +38,7 @@ class CodegenNode(BaseNode):
         repair_context = ""
         existing_files_ctx = ""
         if repair_mode:
-            # summarize failures
+            # 汇总失败信息
             failed = {
                 name: {"issues": r.get("issues", []), "raw": (r.get("raw_output") or "")[:2000]}
                 for name, r in check_results.items()
@@ -51,8 +63,7 @@ class CodegenNode(BaseNode):
 
         files_out = payload.get("files") or []
 
-        # The workspace directory is prepared upstream; we pass it as the sandbox
-        # root with an empty thread_id so Sandbox writes directly into it.
+        # 工作区由上游准备，传入 Sandbox 作为根目录，thread_id 置空以直接写入
         workspace_dir = state.get("workspace_dir") or "."
         sandbox = Sandbox(root=workspace_dir, thread_id="")
 
@@ -89,7 +100,7 @@ class CodegenNode(BaseNode):
 
         return {
             "generated_files": updated,
-            # reset check results so the next checks node re-runs
+            # 重置检查结果，触发下一轮 checks 节点重新运行
             "check_results": {},
             "events": events_extra,
         }

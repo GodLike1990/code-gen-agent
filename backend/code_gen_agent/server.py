@@ -1,8 +1,7 @@
-"""FastAPI server exposing the agent over HTTP + SSE.
+"""通过 HTTP + SSE 暴露 agent 的 FastAPI 服务。
 
-This module is intentionally thin: it only wires together the
-components built in `bootstrap` and `api`. Anything more than
-construction + lifespan belongs in one of those packages.
+本模块刻意保持精简：只负责组装 bootstrap 和 api 包中构建的组件。
+除构造和生命周期管理之外的逻辑应放入对应的子包。
 """
 from __future__ import annotations
 
@@ -56,11 +55,11 @@ def create_app(agent: CodeGenAgent | None = None) -> FastAPI:
     )
     app.add_middleware(HttpLoggingMiddleware)
 
-    # Shared state accessed via FastAPI Depends in api/deps.py.
+    # 通过 api/deps.py 中的 FastAPI Depends 访问共享状态
     app.state.agent = agent
     app.state.request_store = init_request_store(agent.config)
     app.state.runner = runner
-    app.state.threads = []  # dev-only in-memory list of known thread ids
+    app.state.threads = []  # 仅开发用的内存线程 id 列表
 
     app.include_router(build_api_router())
     return app
@@ -73,9 +72,9 @@ def main() -> None:
     import logging
     import uvicorn
 
-    # Silence uvicorn's own access log — HttpLoggingMiddleware handles it.
-    # Route uvicorn error/startup messages through our JSON root logger so all
-    # output shares the same structured format.
+    # 禁用 uvicorn 自带的 access log，由 HttpLoggingMiddleware 统一处理
+    # 将 uvicorn 的 error/startup 日志转发到我们的 JSON 根 logger，
+    # 确保所有输出使用相同的结构化格式
     logging.getLogger("uvicorn.access").handlers = []
     logging.getLogger("uvicorn.access").propagate = False
     for name in ("uvicorn", "uvicorn.error"):
@@ -89,7 +88,7 @@ def main() -> None:
         host=os.environ.get("AGENT_HOST", "0.0.0.0"),
         port=int(os.environ.get("AGENT_PORT", "8000")),
         reload=False,
-        access_log=False,  # disabled — HttpLoggingMiddleware covers it
+        access_log=False,  # 已禁用，由 HttpLoggingMiddleware 覆盖
     )
 
 

@@ -1,4 +1,4 @@
-"""Requirement decomposition node."""
+"""需求拆解节点。"""
 from __future__ import annotations
 
 from typing import Any
@@ -11,6 +11,16 @@ from code_gen_agent.graph.state import AgentState
 
 @register_node("decompose")
 class DecomposeNode(BaseNode):
+    """需求拆解节点 — 将用户需求分解为文件级任务列表。
+
+    调用 LLM 将意图 + 澄清信息转化为具体的文件计划：
+    - language：目标语言（python / go / typescript / java / rust）
+    - tasks：每个文件的路径、用途、依赖关系、验收标准
+
+    MVP 约束（prompt 中强制）：2~4 个文件，必须包含测试文件。
+    输出写入 state["tasks"] 和 state["language"]，供 codegen 节点使用。
+    """
+
     prompt_key = "decompose"
 
     async def run(self, state: AgentState) -> dict[str, Any]:

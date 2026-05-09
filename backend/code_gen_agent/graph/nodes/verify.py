@@ -1,4 +1,4 @@
-"""Verify: semantic requirement acceptance gate after static checks pass."""
+"""Verify：静态检查通过后的语义验收门禁。"""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ from code_gen_agent.graph.state import AgentState
 
 
 def _truncate_files(files: dict[str, str], per_file: int = 4000, total: int = 40000) -> str:
-    """Serialize generated files for the verify prompt, bounded in size."""
+    """序列化生成文件供 verify prompt 使用，限制总大小。"""
     out: list[str] = []
     used = 0
     for path, content in (files or {}).items():
@@ -30,13 +30,24 @@ def _truncate_files(files: dict[str, str], per_file: int = 4000, total: int = 40
 
 @register_node("verify")
 class VerifyNode(BaseNode):
+    """语义验收节点 — 静态检查全部通过后的最后一道语义门禁。
+
+    调用 LLM 对照原始需求、意图、任务列表和生成文件，判断代码是否真正满足需求：
+    - passed=True → 进入 package 打包
+    - passed=False → 将 gaps 注入 check_results["verify"]，
+      触发 repair 循环；连续失败 verify_failures 次后升级 hitl
+
+    设计原则：LLM 调用失败（网络/超时）时默认 passed=True，
+    避免因 LLM 不稳定阻塞原本正确的代码交付。
+    """
+
     name = "verify"
     prompt_key = "verify"
 
     async def run(self, state: AgentState) -> dict[str, Any]:
         files = state.get("generated_files") or {}
         if not files:
-            # Nothing to verify — treat as pass, let packaging handle the empty case.
+            # 无文件可验证，视为通过，交由打包节点处理空工作区
             result = {
                 "passed": True,
                 "reasoning": "No files generated; nothing to verify.",
@@ -70,7 +81,7 @@ class VerifyNode(BaseNode):
         try:
             payload = await call_llm_json(self.llm, rendered["system"], rendered["user"], default)
         except Exception as e:  # noqa: BLE001
-            # Transient LLM failures should NOT gate delivery of otherwise-passing code.
+            # LLM 瞬时故障不应阻塞本已通过静态检查的代码交付
             self.log.warning(
                 "verify_llm_failed",
                 extra={"thread_id": state.get("thread_id"), "event": "verify_skipped", "error": str(e)},
@@ -81,7 +92,7 @@ class VerifyNode(BaseNode):
                 "gaps": [],
             }
 
-        # Coerce shape defensively.
+        # 防御性类型收窄
         passed = bool(payload.get("passed")) if isinstance(payload, dict) else True
         reasoning = str(payload.get("reasoning", "") if isinstance(payload, dict) else "")
         raw_gaps = payload.get("gaps") if isinstance(payload, dict) else []
@@ -98,8 +109,8 @@ class VerifyNode(BaseNode):
             "events": [{"type": "verify", **result}],
         }
         if not passed:
-            # Inject a synthetic failing check so repair prompt receives gaps as
-            # actionable context, and bump verify_failures for routing.
+            # 注入合成失败检查项，让 repair prompt 将 gaps 作为可操作上下文，
+            # 并递增 verify_failures 供路由判断
             prev_checks = dict(state.get("check_results") or {})
             gaps_text = "\n".join(f"- {g}" for g in gaps) or reasoning or "verify failed"
             prev_checks["verify"] = {

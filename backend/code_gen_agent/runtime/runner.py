@@ -1,14 +1,13 @@
-"""Background run manager for same-process async execution.
+"""进程内异步运行的后台任务管理器。
 
-Design:
-- Each thread_id maps to at most one live ``asyncio.Task``.
-- A bounded ring-buffer stores the last REPLAY_BUFFER_SIZE SSE frames so a
-  reconnecting subscriber can catch up without missing events.
-- Subscribers receive frames via an ``asyncio.Queue``; multiple simultaneous
-  subscribers for the same thread are supported.
-- Terminal outcomes always update the ``RequestStore`` exactly once.
-- Duplicate concurrent execution for the same thread_id raises ``RunConflictError``
-  (API layer maps it to HTTP 409).
+设计：
+- 每个 thread_id 最多映射一个活跃的 asyncio.Task。
+- 有界环形缓冲区存储最近 REPLAY_BUFFER_SIZE 条 SSE 帧，
+  重连的订阅者可通过重放补齐历史，不会漏事件。
+- 订阅者通过 asyncio.Queue 接收帧；同一线程支持多个并发订阅者。
+- 终态结果恰好更新一次 RequestStore。
+- 同一 thread_id 并发执行时抛出 RunConflictError
+  （API 层将其映射为 HTTP 409）。
 """
 from __future__ import annotations
 
@@ -22,22 +21,22 @@ from code_gen_agent.api.streaming import stream_run
 from code_gen_agent.observability.logger import get_logger
 from code_gen_agent.persistence import RequestStore
 
-# Maximum SSE frames kept in the per-thread replay buffer.
+# 每线程重放缓冲区保留的最大 SSE 帧数
 REPLAY_BUFFER_SIZE = 500
 
 log = get_logger("runner")
 
 
 class RunConflictError(RuntimeError):
-    """Raised when a second run is started for an already-active thread."""
+    """当已有活跃任务的线程再次启动运行时抛出。"""
 
 
 class RunNotFoundError(RuntimeError):
-    """Raised when subscribing to a thread that has no known record."""
+    """订阅未知线程时抛出。"""
 
 
 class _ThreadState:
-    """Bookkeeping for one active or recently-finished thread."""
+    """单个活跃或已完成线程的运行时状态。"""
 
     def __init__(self) -> None:
         self.task: asyncio.Task | None = None
@@ -47,23 +46,21 @@ class _ThreadState:
 
 
 class Runner:
-    """Per-application background run manager.
+    """应用级后台运行管理器。
 
-    Instantiate once and attach to ``app.state.runner``.  Each
-    ``start_run`` / ``resume_run`` call schedules an ``asyncio.Task`` that
-    drives the LangGraph iterator and publishes SSE frames into a per-thread
-    buffer + all live subscriber queues.
+    实例化一次并挂载到 app.state.runner。
+    每次 start_run / resume_run 调度一个 asyncio.Task，
+    驱动 LangGraph 迭代器并将 SSE 帧推送到线程缓冲区和所有活跃订阅队列。
 
-    Subscribers (SSE endpoint handlers) call ``subscribe(tid)`` which yields
-    buffered frames first, then live frames as they arrive, and finally
-    ``None`` as a sentinel when the run ends.
+    订阅者（SSE 端点处理器）调用 subscribe(tid)，
+    先接收缓冲帧，再接收实时帧，最后收到 None 哨兵表示运行结束。
     """
 
     def __init__(self) -> None:
         self._threads: dict[str, _ThreadState] = {}
 
     # ------------------------------------------------------------------
-    # Public entry points
+    # 公共入口
     # ------------------------------------------------------------------
 
     def start_run(
@@ -74,9 +71,9 @@ class Runner:
         store: RequestStore,
         logger: logging.Logger | None = None,
     ) -> None:
-        """Schedule a fresh run as a background ``asyncio.Task``.
+        """以后台 asyncio.Task 启动新运行。
 
-        Raises ``RunConflictError`` if a live task already exists for *tid*.
+        若 tid 已有活跃任务则抛出 RunConflictError。
         """
         self._ensure_no_active(tid)
         st = _ThreadState()
@@ -97,13 +94,12 @@ class Runner:
         store: RequestStore,
         logger: logging.Logger | None = None,
     ) -> None:
-        """Schedule a resume as a background ``asyncio.Task``.
+        """以后台 asyncio.Task 恢复暂停的运行。
 
-        Raises ``RunConflictError`` if a live task already exists for *tid*.
+        若 tid 已有活跃任务则抛出 RunConflictError。
         """
         self._ensure_no_active(tid)
-        # Keep existing buffer; resuming appends to it so subscribers get
-        # the full history in order.
+        # 保留现有缓冲区，恢复时追加帧，订阅者可获得完整历史
         st = self._threads.get(tid) or _ThreadState()
         self._threads[tid] = st
         st.finished = False
@@ -116,12 +112,11 @@ class Runner:
         st.task.add_done_callback(lambda t: self._on_done(tid, t))
 
     async def subscribe(self, tid: str) -> AsyncIterator[dict[str, Any]]:
-        """Async generator that yields SSE frame dicts for *tid*.
+        """异步生成器，为 tid 产出 SSE 帧字典。
 
-        Replay buffered frames first, then live frames.  Yields until the
-        task finishes (sentinel ``None`` received from queue).
+        先重放缓冲帧，再推送实时帧，任务结束时（收到 None 哨兵）退出。
 
-        Raises ``RunNotFoundError`` when *tid* has no record at all.
+        tid 无任何记录时抛出 RunNotFoundError。
         """
         st = self._threads.get(tid)
         if st is None:
@@ -130,18 +125,17 @@ class Runner:
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         st.subscribers.append(queue)
         try:
-            # Replay buffered frames first so the client catches up.
+            # 先重放缓冲帧，让客户端补齐历史
             for frame in list(st.buffer):
                 yield frame
 
-            # If the task already finished before we subscribed, buffer
-            # replay is sufficient — no need to wait on the queue.
+            # 任务在订阅前已结束，重放缓冲即足够，无需等待队列
             if st.finished:
                 return
 
             while True:
                 frame = await queue.get()
-                if frame is None:  # sentinel: run ended
+                if frame is None:  # 哨兵：运行已结束
                     return
                 yield frame
         finally:
@@ -151,14 +145,14 @@ class Runner:
                 pass
 
     def is_active(self, tid: str) -> bool:
-        """Return True if a live task is running for *tid*."""
+        """tid 有活跃任务时返回 True。"""
         st = self._threads.get(tid)
         return st is not None and st.task is not None and not st.task.done()
 
     async def shutdown(self) -> None:
-        """Cancel all active tasks and wait for them to finish.
+        """取消所有活跃任务并等待其结束。
 
-        Call this in the FastAPI lifespan ``finally`` block.
+        在 FastAPI lifespan 的 finally 块中调用。
         """
         tasks = [
             st.task
@@ -171,7 +165,7 @@ class Runner:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # 内部辅助方法
     # ------------------------------------------------------------------
 
     def _ensure_no_active(self, tid: str) -> None:
@@ -189,20 +183,20 @@ class Runner:
         store: RequestStore,
         logger: logging.Logger,
     ) -> None:
-        """Drive ``stream_run`` and publish every frame to buffer + subscribers."""
+        """驱动 stream_run 并将每帧发布到缓冲区和订阅者队列。"""
         async for frame in stream_run(coro_iter, tid=tid, store=store, logger=logger):
             st.buffer.append(frame)
             for q in list(st.subscribers):
                 q.put_nowait(frame)
 
     def _on_done(self, tid: str, task: asyncio.Task) -> None:
-        """Callback fired when the background task exits (any outcome)."""
+        """后台任务退出（任意结果）时的回调。"""
         st = self._threads.get(tid)
         if st is None:
             return
         st.finished = True
         st.task = None
-        # Send sentinel to all waiting subscribers so they exit cleanly.
+        # 向所有等待中的订阅者发送哨兵，使其干净退出
         for q in list(st.subscribers):
             try:
                 q.put_nowait(None)

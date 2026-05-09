@@ -1,4 +1,4 @@
-"""Shared helpers for nodes."""
+"""节点共享工具函数。"""
 from __future__ import annotations
 
 import json
@@ -18,11 +18,11 @@ def strip_fences(text: str) -> str:
 async def call_llm_json(
     llm: BaseChatModel, system: str, user: str, default: Any
 ) -> Any:
-    """Invoke LLM and parse its response as JSON. Return `default` on parse failure."""
+    """调用 LLM 并将响应解析为 JSON，解析失败时返回 default。"""
     resp = await llm.ainvoke([SystemMessage(content=system), HumanMessage(content=user)])
     content = getattr(resp, "content", "") or ""
     if not isinstance(content, str):
-        # LangChain sometimes returns list content parts
+        # LangChain 有时返回列表形式的 content parts
         content = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
     try:
         return json.loads(strip_fences(content))

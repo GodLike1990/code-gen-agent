@@ -1,4 +1,4 @@
-"""LLM-based code review checker."""
+"""基于 LLM 的代码审查检查器。"""
 from __future__ import annotations
 
 from typing import Any
@@ -12,7 +12,7 @@ from code_gen_agent.prompts.loader import PromptRegistry
 
 @register_checker("llm_review")
 class LLMReviewChecker:
-    """Requires llm+prompts injected by checks orchestrator via context."""
+    """需要 checks 编排节点通过 context 注入 llm + prompts。"""
 
     name = "llm_review"
 
@@ -31,7 +31,7 @@ class LLMReviewChecker:
                 raw_output="llm_review skipped: no LLM context",
             )
 
-        # truncate files to keep context reasonable
+        # 截断文件内容，控制上下文大小
         snippet = {p: (c if len(c) < 6000 else c[:6000] + "\n...[truncated]") for p, c in files.items()}
         rendered = prompts.render("llm_review", tasks=tasks, files=snippet)
         default = {"passed": True, "issues": []}

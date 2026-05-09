@@ -1,4 +1,4 @@
-"""Node registry for pluggable graph composition."""
+"""节点注册表，支持可插拔的图组装。"""
 from __future__ import annotations
 
 from typing import Callable, TypeVar
@@ -9,7 +9,7 @@ T = TypeVar("T", bound=type[BaseNode])
 
 
 class NodeRegistry:
-    """Global registry of node classes keyed by name."""
+    """以名称为键的全局节点类注册表。"""
 
     _registry: dict[str, type[BaseNode]] = {}
 
@@ -38,5 +38,5 @@ class NodeRegistry:
 
 
 def register_node(name: str) -> Callable[[T], T]:
-    """Decorator: @register_node('intent') class IntentNode(BaseNode): ..."""
+    """装饰器：@register_node('intent') class IntentNode(BaseNode): ..."""
     return NodeRegistry.register(name)

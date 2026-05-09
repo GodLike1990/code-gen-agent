@@ -1,4 +1,4 @@
-"""Agent graph introspection endpoint."""
+"""Agent 图结构内省端点。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

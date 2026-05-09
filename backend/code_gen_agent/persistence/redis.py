@@ -1,9 +1,9 @@
-"""Redis-backed checkpointer."""
+"""基于 Redis 的检查点。"""
 from __future__ import annotations
 
 
 def create_redis_checkpointer(dsn: str):
-    """Create a RedisSaver. Requires `langgraph-checkpoint-redis`."""
+    """创建 RedisSaver，需要 langgraph-checkpoint-redis。"""
     try:
         from langgraph.checkpoint.redis import RedisSaver
     except ImportError as e:

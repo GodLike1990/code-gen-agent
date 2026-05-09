@@ -1,4 +1,4 @@
-"""Security scanner — Semgrep preferred, Bandit fallback for Python."""
+"""安全扫描检查器 — 优先使用 Semgrep，Python 回退到 Bandit。"""
 from __future__ import annotations
 
 import json

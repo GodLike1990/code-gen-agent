@@ -1,22 +1,22 @@
-"""Central string constants for the agent graph, API, and streaming layers.
+"""图、API 和流式层的字符串常量中心。
 
-Having all literals in one place means:
-- A single grep shows every usage
-- Typos produce NameError instead of silent wrong behaviour
-- The SSE contract between backend and frontend is visible at a glance
+集中管理所有字面量的好处：
+- 单次 grep 即可找到所有使用点
+- 拼写错误会产生 NameError，而非静默错误行为
+- 后端与前端的 SSE 协议在此一目了然
 
-BACKEND ↔ FRONTEND CONTRACT
-────────────────────────────
-The EVENT_* and STATUS_* constants here are mirrored in the frontend at
-  frontend/src/constants/events.ts   (SSE_EVENT object)
-  frontend/src/constants/status.ts   (RUN_STATUS_* objects)
-Any rename here must be accompanied by a matching change on the frontend side.
+后端 ↔ 前端协议
+────────────────
+EVENT_* 和 STATUS_* 常量在前端的映射：
+  frontend/src/constants/events.ts   （SSE_EVENT 对象）
+  frontend/src/constants/status.ts   （RUN_STATUS_* 对象）
+此处任何重命名都必须同步修改前端对应文件。
 """
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Graph node names
-# Must match the string keys passed to StateGraph.add_node() in builder.py.
+# 图节点名称
+# 必须与 builder.py 中传给 StateGraph.add_node() 的字符串键一致
 # ---------------------------------------------------------------------------
 NODE_INTENT    = "intent"
 NODE_CLARIFY   = "clarify"
@@ -28,24 +28,24 @@ NODE_HITL      = "hitl"
 NODE_VERIFY    = "verify"
 NODE_PACKAGE   = "package"
 
-# Ordered pipeline — useful for iteration and documentation only.
+# 有序流水线 — 仅用于迭代和文档
 ALL_NODES = [
     NODE_INTENT, NODE_CLARIFY, NODE_DECOMPOSE, NODE_CODEGEN,
     NODE_CHECKS, NODE_REPAIR, NODE_HITL, NODE_VERIFY, NODE_PACKAGE,
 ]
 
 # ---------------------------------------------------------------------------
-# HITL decision actions
-# Set by the hitl node on AgentState["next_action"]; consumed by route_after_hitl.
-# Frontend sends these in the ResumeRequest.human_feedback["action"] field.
+# HITL 决策动作
+# 由 hitl 节点写入 AgentState["next_action"]，由 route_after_hitl 消费
+# 前端在 ResumeRequest.human_feedback["action"] 字段中发送
 # ---------------------------------------------------------------------------
-HITL_ACTION_RETRY = "retry"   # Reset repair_attempts and re-run codegen
-HITL_ACTION_PATCH = "patch"   # Merge user-provided files, re-run checks
-HITL_ACTION_ABORT = "abort"   # Route to END; streaming marks final_status="aborted"
+HITL_ACTION_RETRY = "retry"   # 重置 repair_attempts，重新运行 codegen
+HITL_ACTION_PATCH = "patch"   # 合并用户提供的文件，重新运行 checks
+HITL_ACTION_ABORT = "abort"   # 路由到 END，流式层将 final_status 标为 "aborted"
 
 # ---------------------------------------------------------------------------
-# Routing targets returned by routing.py functions
-# These are the string keys in the conditional-edge dispatch maps in builder.py.
+# routing.py 函数返回的路由目标
+# 即 builder.py 中条件边 dispatch map 的字符串键
 # ---------------------------------------------------------------------------
 ROUTE_END      = "end"
 ROUTE_CODEGEN  = NODE_CODEGEN
@@ -57,41 +57,41 @@ ROUTE_VERIFY   = NODE_VERIFY
 ROUTE_PACKAGE  = NODE_PACKAGE
 
 # ---------------------------------------------------------------------------
-# SSE event types emitted by streaming.py
-# The frontend subscribes to GET /agent/runs/{tid}/events and dispatches on
-# these names.  See frontend/src/constants/events.ts for the mirror.
+# streaming.py 发出的 SSE 事件类型
+# 前端订阅 GET /agent/runs/{tid}/events 并按事件名分发
+# 对应前端 frontend/src/constants/events.ts
 # ---------------------------------------------------------------------------
-EVENT_STATE_DELTA   = "state_delta"    # Emitted after every node update; triggers state poll
-EVENT_INTERRUPT     = "interrupt"      # Generic LangGraph interrupt (clarify or hitl)
-EVENT_CLARIFY       = "clarify"        # Agent needs clarification from the user
-EVENT_HITL          = "hitl"           # Agent escalated to human-in-the-loop
-EVENT_HITL_DECISION = "hitl_decision"  # HITL node recorded user's action
-EVENT_DONE          = "done"           # Run finished (carries final_status in data)
-EVENT_ERROR         = "error"          # Unhandled exception during execution
-# Node-level events use prefix + node name, e.g. "node:intent", "node:codegen"
+EVENT_STATE_DELTA   = "state_delta"    # 每次节点更新后发出，触发前端状态轮询
+EVENT_INTERRUPT     = "interrupt"      # 通用 LangGraph interrupt（clarify 或 hitl）
+EVENT_CLARIFY       = "clarify"        # Agent 需要用户澄清
+EVENT_HITL          = "hitl"           # Agent 升级为人工介入
+EVENT_HITL_DECISION = "hitl_decision"  # HITL 节点记录了用户决策
+EVENT_DONE          = "done"           # 运行结束（data 中携带 final_status）
+EVENT_ERROR         = "error"          # 未处理异常
+# 节点级事件使用前缀 + 节点名，如 "node:intent"、"node:codegen"
 EVENT_NODE_PREFIX   = "node:"
 
 # ---------------------------------------------------------------------------
-# Run final_status values
-# Written to RequestStore by streaming.py and returned in the "done" SSE event.
-# The frontend RequirementRecord.status union must include all of these values.
+# 运行 final_status 值
+# 由 streaming.py 写入 RequestStore，并包含在 "done" SSE 事件中
+# 前端 RequirementRecord.status 联合类型必须涵盖所有这些值
 #
-# Mapping to frontend RunStatus:
-#   STATUS_INTERRUPTED → RunStatus "hitl"  (frontend alias for HITL pause)
+# 与前端 RunStatus 的映射：
+#   STATUS_INTERRUPTED → RunStatus "hitl"（前端对 HITL 暂停的别名）
 #   STATUS_RUNNING     → RunStatus "running"
-#   all others         → same name
+#   其余                → 同名
 # ---------------------------------------------------------------------------
 STATUS_RUNNING     = "running"
 STATUS_DONE        = "done"
-STATUS_INTERRUPTED = "interrupted"  # Agent paused at interrupt(); waiting for human input
-STATUS_ABORTED     = "aborted"      # User explicitly stopped the run via HITL abort action
-STATUS_CANCELLED   = "cancelled"    # Client disconnected mid-stream (CancelledError)
-STATUS_FAILED      = "failed"       # Unhandled exception; agent could not recover
+STATUS_INTERRUPTED = "interrupted"  # Agent 在 interrupt() 处暂停，等待人工输入
+STATUS_ABORTED     = "aborted"      # 用户通过 HITL abort 主动终止运行
+STATUS_CANCELLED   = "cancelled"    # 客户端中途断开（CancelledError）
+STATUS_FAILED      = "failed"       # 未处理异常，agent 无法恢复
 
 # ---------------------------------------------------------------------------
-# Interrupt type strings
-# Set in the interrupt() value dict by clarify/hitl nodes.
-# Read by runs.py GET /interrupt to tell the frontend which form to show.
+# interrupt 类型字符串
+# 由 clarify/hitl 节点写入 interrupt() 值字典
+# 供 runs.py GET /interrupt 告知前端展示哪种表单
 # ---------------------------------------------------------------------------
 INTERRUPT_TYPE_CLARIFY = "clarify"
 INTERRUPT_TYPE_HITL    = "hitl"

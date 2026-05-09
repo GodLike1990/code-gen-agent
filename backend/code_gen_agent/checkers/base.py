@@ -1,4 +1,4 @@
-"""Checker protocol and registry."""
+"""Checker 协议定义与注册表。"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field

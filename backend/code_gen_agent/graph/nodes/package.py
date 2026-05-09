@@ -1,4 +1,4 @@
-"""Package: zip the workspace into a single downloadable artifact."""
+"""Package：将工作区压缩为可下载的 ZIP 文件。"""
 from __future__ import annotations
 
 import time
@@ -28,6 +28,16 @@ def _iter_files(root: Path):
 
 @register_node("package")
 class PackageNode(BaseNode):
+    """打包节点 — 图的最终节点，将工作区压缩为可下载 ZIP。
+
+    遍历 workspace_dir 下的所有文件（跳过 .git / __pycache__ / node_modules
+    和 .tmp 文件），打包为 {thread_id}.zip 存放在工作区父目录。
+
+    结果写入 state["artifact"]，包含 zip_path / size_bytes / file_count。
+    前端 /requirement 页面通过 artifact.zip_path 判断是否显示下载按钮。
+    工作区为空时不生成 zip，artifact.zip_path=None。
+    """
+
     name = "package"
 
     async def run(self, state: AgentState) -> dict[str, Any]:
@@ -54,7 +64,7 @@ class PackageNode(BaseNode):
                 "events": [{"type": "artifact", **result}],
             }
 
-        # Place the zip next to the workspace dir (same parent), named by thread id.
+        # zip 放在工作区同级目录，以 thread_id 命名
         zip_path = ws.parent / f"{thread_id}.zip"
 
         file_count = 0
@@ -66,7 +76,7 @@ class PackageNode(BaseNode):
 
         size_bytes = zip_path.stat().st_size if zip_path.exists() else 0
         if file_count == 0:
-            # Remove an empty zip — no point keeping it.
+            # 工作区为空，删除空 zip
             try:
                 zip_path.unlink()
             except OSError:

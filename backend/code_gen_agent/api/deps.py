@@ -1,8 +1,7 @@
-"""FastAPI dependencies shared by the router modules.
+"""各路由模块共享的 FastAPI 依赖项。
 
-Each router uses `Depends(...)` to pull its collaborators from
-`app.state`, so routers never reach into `request.app.state` directly
-and stay easy to unit-test.
+每个路由通过 Depends(...) 从 app.state 获取协作对象，
+避免路由直接访问 request.app.state，便于单元测试。
 """
 from __future__ import annotations
 
@@ -35,12 +34,11 @@ def get_runner(request: Request) -> Runner:
 
 
 def valid_tid(thread_id: str = Path(...)) -> str:
-    """Reject empty / path-separator thread ids early with HTTP 400."""
+    """提前以 HTTP 400 拒绝空值或含路径分隔符的 thread id。"""
     if not thread_id or "/" in thread_id or "\\" in thread_id or ".." in thread_id:
         raise HTTPException(400, "invalid thread_id")
     return thread_id
 
 
-# Re-export `Depends` so routers can `from .deps import Depends, ...`
-# if they prefer a single import source.
+# 重新导出 Depends，允许路由从单一入口导入
 __all__ = ["Depends", "get_agent", "get_request_store", "get_runner", "valid_tid"]

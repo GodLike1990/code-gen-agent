@@ -1,4 +1,4 @@
-"""Top-level CodeGenAgent facade."""
+"""CodeGenAgent 顶层门面类。"""
 from __future__ import annotations
 
 import uuid
@@ -19,7 +19,7 @@ from code_gen_agent.prompts.loader import PromptRegistry
 
 
 class CodeGenAgent:
-    """One-liner agent: `CodeGenAgent(AgentConfig(api_key='sk-...'))`."""
+    """一行代码启动的 agent：`CodeGenAgent(AgentConfig(api_key='sk-...'))`。"""
 
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
@@ -27,20 +27,20 @@ class CodeGenAgent:
         self._langsmith_enabled = configure_langsmith(config)
         self.usage = UsageAggregator()
         self.prompts = PromptRegistry(config.prompts_dir)
-        # Sqlite backend creates the saver lazily in `setup()` because
-        # AsyncSqliteSaver captures the running event loop on construction.
+        # sqlite 后端在 setup() 中惰性创建 saver，
+        # 因为 AsyncSqliteSaver 在构造时会捕获当前事件循环。
         self.checkpointer = create_checkpointer(config)
         self._aio_conn: Any = None
         self._setup_done = False
-        # LLM is per-thread to attach per-thread usage tracker. We cache by thread_id.
+        # LLM 按 thread 创建以附加各线程的用量追踪器，以 thread_id 缓存
         self._llms: dict[str, Any] = {}
         self._graphs: dict[str, Any] = {}
 
     async def setup(self) -> None:
-        """Finish async init (open aiosqlite connection for sqlite backend).
+        """完成异步初始化（为 sqlite 后端打开 aiosqlite 连接）。
 
-        Must be awaited before the first `astream()` call when using sqlite.
-        Safe to call multiple times.
+        首次调用 astream() 前必须 await 此方法（使用 sqlite 时）。
+        可安全多次调用。
         """
         if self._setup_done:
             return
@@ -55,14 +55,14 @@ class CodeGenAgent:
         self._setup_done = True
 
     async def aclose(self) -> None:
-        """Release resources (close aiosqlite connection)."""
+        """释放资源（关闭 aiosqlite 连接）。"""
         if self._aio_conn is not None:
             try:
                 await self._aio_conn.close()
             finally:
                 self._aio_conn = None
 
-    # ---- public API ----
+    # ---- 公共 API ----
 
     def new_thread_id(self) -> str:
         return "t-" + uuid.uuid4().hex[:12]
@@ -119,7 +119,7 @@ class CodeGenAgent:
             yield {"thread_id": thread_id, "update": chunk}
 
     def run(self, user_input: str, thread_id: str | None = None) -> dict[str, Any]:
-        """Synchronous one-shot. Raises if HITL interrupt occurs."""
+        """同步单次运行，发生 HITL interrupt 时抛出异常。"""
         import asyncio
 
         async def _collect():
@@ -131,7 +131,7 @@ class CodeGenAgent:
         events = asyncio.run(_collect())
         return {"events": events}
 
-    # ---- internals ----
+    # ---- 内部方法 ----
 
     def _graph_for(self, thread_id: str):
         if thread_id in self._graphs:

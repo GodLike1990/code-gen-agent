@@ -1,4 +1,4 @@
-"""Sandboxed per-thread workspace directory."""
+"""沙盒化的每线程工作区目录。"""
 from __future__ import annotations
 
 import os
@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 class Sandbox:
-    """Per-thread isolated directory with path-traversal protection."""
+    """每线程隔离目录，带路径穿越防护。"""
 
     def __init__(self, root: str | Path, thread_id: str) -> None:
         self.root = Path(root).resolve()
@@ -16,7 +16,7 @@ class Sandbox:
         self.dir.mkdir(parents=True, exist_ok=True)
 
     def resolve(self, rel_path: str) -> Path:
-        """Resolve rel_path inside the sandbox; raise on escape."""
+        """在沙盒内解析相对路径，路径逃逸时抛出异常。"""
         if os.path.isabs(rel_path):
             raise ValueError(f"absolute path not allowed: {rel_path}")
         target = (self.dir / rel_path).resolve()

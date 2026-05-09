@@ -1,8 +1,7 @@
-"""Per-request local file store.
+"""每请求本地文件存储。
 
-Keeps the *user-facing request record* on disk, deliberately decoupled from
-the LangGraph checkpointer (which owns graph state). One JSON file per
-thread_id under ``requests_dir``.
+在磁盘上保存用户可见的请求记录，刻意与 LangGraph 检查点解耦
+（检查点负责图状态）。每个 thread_id 在 requests_dir 下对应一个 JSON 文件。
 
 Schema::
 
@@ -10,9 +9,9 @@ Schema::
         "thread_id": str,
         "created_at": ISO-8601 UTC,
         "updated_at": ISO-8601 UTC,
-        "request":    str,                        # original user text
+        "request":    str,                        # 原始用户输入
         "status":     "running" | "done" | "aborted" | "failed" | "interrupted" | "cancelled",
-        "summary":    str | None                  # optional end-state summary
+        "summary":    str | None                  # 可选的终态摘要
     }
 """
 from __future__ import annotations
@@ -32,20 +31,19 @@ def _now() -> str:
 
 
 class RequestStore:
-    """Atomic JSON-per-thread storage for user request records."""
+    """以每线程 JSON 文件为原子单元的用户请求记录存储。"""
 
     def __init__(self, root: str | os.PathLike[str]) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
-    # ------------------------------------------------------------------ paths
+    # ------------------------------------------------------------------ 路径
     def _path(self, thread_id: str) -> Path:
-        # Very conservative sanitisation: thread ids are server-generated UUIDs,
-        # but guard against path traversal just in case.
+        # 保守消毒：thread id 为服务端生成的 UUID，但仍防范路径穿越
         safe = thread_id.replace("/", "_").replace("\\", "_")
         return self.root / f"{safe}.json"
 
-    # ------------------------------------------------------------------ api
+    # ------------------------------------------------------------------ API
     def save(self, thread_id: str, request: str) -> dict[str, Any]:
         now = _now()
         rec = {
@@ -103,7 +101,7 @@ class RequestStore:
         items.sort(key=lambda r: r.get("created_at", ""), reverse=True)
         return items
 
-    # ------------------------------------------------------------------ io
+    # ------------------------------------------------------------------ IO
     @staticmethod
     def _atomic_write(path: Path, data: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

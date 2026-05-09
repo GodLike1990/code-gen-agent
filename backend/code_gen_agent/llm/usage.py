@@ -1,4 +1,4 @@
-"""Token / cost usage tracking across LLM calls."""
+"""跨 LLM 调用的 token / 费用用量追踪。"""
 from __future__ import annotations
 
 import threading
@@ -23,7 +23,7 @@ class UsageRecord:
         self.calls += 1
 
 
-# rough default pricing per 1K tokens (USD). Users can override via set_pricing.
+# 每千 token 的默认参考价格（美元），用户可通过 set_pricing 覆盖
 DEFAULT_PRICING: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.00015, 0.0006),
     "gpt-4o": (0.0025, 0.01),
@@ -33,7 +33,7 @@ DEFAULT_PRICING: dict[str, tuple[float, float]] = {
 
 
 class UsageTracker(BaseCallbackHandler):
-    """LangChain callback handler that aggregates token usage per model."""
+    """聚合每个模型 token 用量的 LangChain 回调处理器。"""
 
     def __init__(self) -> None:
         super().__init__()
@@ -44,7 +44,7 @@ class UsageTracker(BaseCallbackHandler):
     def set_pricing(self, model: str, input_per_1k: float, output_per_1k: float) -> None:
         self._pricing[model] = (input_per_1k, output_per_1k)
 
-    # LangChain callback hook
+    # LangChain 回调钩子
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:  # noqa: D401
         try:
             output = response.llm_output or {}
@@ -56,7 +56,7 @@ class UsageTracker(BaseCallbackHandler):
                 with self._lock:
                     self._by_model[model].add(input_t, output_t)
         except Exception:
-            # never fail user flow on accounting errors
+            # 用量统计异常不能影响用户流程
             pass
 
     def snapshot(self) -> dict[str, Any]:

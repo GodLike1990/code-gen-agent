@@ -1,4 +1,4 @@
-"""AgentState: the graph's shared state."""
+"""AgentState：图的共享状态。"""
 from __future__ import annotations
 
 import operator
@@ -6,42 +6,42 @@ from typing import Annotated, Any, TypedDict
 
 
 class AgentState(TypedDict, total=False):
-    # input
+    # 输入
     user_input: str
     thread_id: str
     workspace_dir: str
 
-    # intent & clarification
+    # 意图与澄清
     intent: dict[str, Any] | None
     clarifications: list[dict[str, Any]]
     clarify_questions: list[str]
 
-    # planning
+    # 规划
     language: str
     tasks: list[dict[str, Any]]
 
-    # generation
+    # 生成
     generated_files: dict[str, str]
 
-    # checks
+    # 检查
     check_results: dict[str, Any]
 
-    # repair
+    # 修复
     repair_attempts: int
     max_repairs: int
     repair_history: Annotated[list[dict[str, Any]], operator.add]
 
-    # routing
+    # 路由
     next_action: str
     escalated: bool
     hitl_decision: dict[str, Any] | None
 
-    # verify (semantic requirement check) + final artifact
+    # 语义验收 + 最终产物
     verify_result: dict[str, Any] | None
     verify_failures: int
     artifact: dict[str, Any] | None
 
-    # observability
+    # 可观测性
     events: Annotated[list[dict[str, Any]], operator.add]
 
 

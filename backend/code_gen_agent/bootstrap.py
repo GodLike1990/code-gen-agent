@@ -1,12 +1,11 @@
-"""Startup initialization helpers.
+"""启动初始化工具函数。
 
-Each `init_*` function does one thing and returns its artefact. No module-level
-singletons — callers (FastAPI `create_app`, CLI entrypoint, library users)
-decide how to wire them.
+每个 init_* 函数只做一件事并返回其产物。无模块级单例，
+调用方（FastAPI create_app、CLI 入口、库用户）自行决定如何组装。
 
-Note: `configure_logging` is already called inside `CodeGenAgent.__init__`,
-so there is no separate `init_logging` function here. Log handlers are
-attached when you construct an agent.
+注意：configure_logging 已在 CodeGenAgent.__init__ 中调用，
+因此此处没有单独的 init_logging 函数。
+构造 agent 时日志处理器即已挂载。
 """
 from __future__ import annotations
 
@@ -27,11 +26,10 @@ def _mask(v: str | None, keep: int = 4) -> str:
 
 
 def init_config_from_env() -> AgentConfig:
-    """Build an `AgentConfig` from environment variables.
+    """从环境变量构建 AgentConfig。
 
-    Component switches default to the minimal-start subset so a cold
-    `APP_ENV=dev` install only runs lint + compile checkers unless the
-    operator opts in to the rest.
+    各组件开关默认为最小启动子集，冷启动时只运行 lint + compile，
+    运维人员可通过环境变量按需开启其余 checker。
     """
     provider = os.environ.get("AGENT_PROVIDER", "openai")
 
@@ -72,20 +70,20 @@ def init_config_from_env() -> AgentConfig:
 
 
 def init_request_store(cfg: AgentConfig) -> RequestStore:
-    """Per-request file store, decoupled from the graph checkpointer."""
+    """请求级文件存储，与图检查点解耦。"""
     return RequestStore(cfg.requests_dir)
 
 
 def init_runner() -> Runner:
-    """Create the background run manager (one per application instance)."""
+    """创建后台运行管理器（每个应用实例一个）。"""
     return Runner()
 
 
 def init_agent(cfg: AgentConfig | None = None) -> CodeGenAgent:
-    """Construct a `CodeGenAgent` and emit the `server_boot` structured log.
+    """构建 CodeGenAgent 并输出 server_boot 结构化日志。
 
-    The agent is NOT yet `setup()`-ed — async setup is deferred to the FastAPI
-    lifespan (or the caller's own event loop).
+    agent 尚未执行 setup()，异步初始化延迟到 FastAPI lifespan
+    或调用方自己的事件循环中进行。
     """
     if cfg is None:
         cfg = init_config_from_env()

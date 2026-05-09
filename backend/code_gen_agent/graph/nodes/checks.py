@@ -1,4 +1,4 @@
-"""Parallel multi-dimensional checks orchestrator."""
+"""多维度并行检查编排节点。"""
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +12,18 @@ from code_gen_agent.graph.state import AgentState
 
 @register_node("checks")
 class ChecksNode(BaseNode):
-    """Runs all enabled checkers concurrently."""
+    """多维度并行检查节点 — 对生成代码执行质量门禁。
+
+    并发运行所有启用的 checker（asyncio.gather），每个 checker 有 90s 超时：
+    - lint：语法/风格检查（Python→ruff，JS/TS→eslint）
+    - security：安全扫描（semgrep / bandit）
+    - compile：编译/类型检查
+    - test：运行单元测试（pytest / go test / jest / cargo test）
+    - llm_review：LLM 自审代码质量
+
+    全部通过 → routing 进入 verify；任一失败 → 进入 repair（最多 max_repairs 次）。
+    结果写入 state["check_results"]，格式为 {checker_name: CheckResult.to_dict()}。
+    """
 
     DEFAULT_CHECKS = ["lint", "security", "compile", "test", "llm_review"]
 

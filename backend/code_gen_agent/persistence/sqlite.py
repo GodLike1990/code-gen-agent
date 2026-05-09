@@ -1,13 +1,12 @@
-"""SQLite file-based async checkpointer.
+"""基于 SQLite 文件的异步检查点。
 
-Uses `AsyncSqliteSaver` + `aiosqlite` because the agent runs `graph.astream(...)`
-(async). The synchronous `SqliteSaver` raises `NotImplementedError` on async
-calls, which silently aborts every run — see logs/agent.log from earlier.
+使用 AsyncSqliteSaver + aiosqlite，因为 agent 运行 graph.astream()（异步）。
+同步的 SqliteSaver 在异步调用时抛出 NotImplementedError，
+会静默中止每次运行。
 
-`AsyncSqliteSaver.__init__` captures the running event loop, so it MUST be
-constructed from inside async context (e.g. FastAPI startup). Hence this
-factory is async and returns (saver, conn) so the caller can close the conn on
-shutdown.
+AsyncSqliteSaver.__init__ 会捕获当前事件循环，
+因此必须在异步上下文中构造（如 FastAPI 启动）。
+此工厂为 async 函数并返回 (saver, conn)，以便调用方在关闭时关闭连接。
 """
 from __future__ import annotations
 
@@ -16,10 +15,10 @@ from typing import Any
 
 
 async def create_async_sqlite_checkpointer(dsn: str) -> tuple[Any, Any]:
-    """Open an aiosqlite connection and wrap it in AsyncSqliteSaver.
+    """打开 aiosqlite 连接并包装为 AsyncSqliteSaver。
 
-    Returns (saver, conn). Caller owns the connection and should `await
-    conn.close()` on shutdown.
+    返回 (saver, conn)，调用方负责管理连接生命周期，
+    关闭时需 await conn.close()。
     """
     try:
         import aiosqlite

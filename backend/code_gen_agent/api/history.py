@@ -1,4 +1,4 @@
-"""Request history endpoints."""
+"""请求历史记录端点。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException

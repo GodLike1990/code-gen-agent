@@ -1,4 +1,4 @@
-"""Test runner checker — supports Python (pytest), JS/TS (jest/vitest), Go, Java, Rust."""
+"""测试运行检查器 — 支持 Python (pytest)、JS/TS (jest/vitest)、Go、Java、Rust。"""
 from __future__ import annotations
 
 import shutil
@@ -25,12 +25,12 @@ class TestChecker:
             p.endswith((".test.js", ".test.ts", ".spec.js", ".spec.ts")) for p in files
         )
         has_go_tests = any(p.endswith("_test.go") for p in files)
-        # Java: files matching *Test.java or *Tests.java
+        # Java：匹配 *Test.java 或 *Tests.java
         has_java_tests = any(
             (p.endswith("Test.java") or p.endswith("Tests.java")) for p in files
         )
-        # Rust: #[cfg(test)] blocks live in the same source file — check by presence of .rs files
-        # (cargo test runs them automatically; we just need any .rs file)
+        # Rust：#[cfg(test)] 块位于源文件内 — 检测 .rs 文件是否存在
+        # （cargo test 会自动运行，有 .rs 文件即可）
         has_rust = any(p.endswith(".rs") for p in files)
 
         issues: list[Issue] = []

@@ -1,4 +1,4 @@
-"""Provider-specific defaults."""
+"""各 provider 的默认参数。"""
 from __future__ import annotations
 
 from dataclasses import dataclass

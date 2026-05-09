@@ -1,12 +1,12 @@
-"""LangChain callback that logs a concise LLM call summary per invocation.
+"""LangChain 回调，每次 LLM 调用输出一条简洁日志。
 
-Each ``llm_call`` log line contains:
-- thread_id  (if set on the callback)
-- model name
-- input / output / total token counts
+每条 llm_call 日志包含：
+- thread_id（若已设置）
+- 模型名称
+- 输入/输出/总 token 数
 - latency_ms
-- prompt_preview  (first 200 chars of the first human/system message)
-- completion_preview  (first 200 chars of the response text)
+- prompt_preview（第一条人类/系统消息的前 200 字符）
+- completion_preview（响应文本的前 200 字符）
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ log = get_logger("llm")
 
 
 class LlmLogCallback(BaseCallbackHandler):
-    """Emit one structured ``llm_call`` log line per LLM invocation."""
+    """每次 LLM 调用发出一条结构化 llm_call 日志。"""
 
     def __init__(self, thread_id: str | None = None) -> None:
         super().__init__()
@@ -38,7 +38,7 @@ class LlmLogCallback(BaseCallbackHandler):
 
     def on_chat_model_start(self, serialized: Any, messages: list[list], **kwargs: Any) -> None:
         self._start = time.perf_counter()
-        # Flatten all message contents into one preview string.
+        # 将所有消息内容拼接为一个预览字符串
         parts: list[str] = []
         for msg_list in messages:
             for msg in msg_list:
@@ -56,7 +56,7 @@ class LlmLogCallback(BaseCallbackHandler):
             input_t = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
             output_t = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
 
-            # Pull completion text from generations[0][0].
+            # 从 generations[0][0] 中提取补全文本
             completion_preview = ""
             if response.generations:
                 gen = response.generations[0]
@@ -83,5 +83,5 @@ class LlmLogCallback(BaseCallbackHandler):
                 },
             )
         except Exception:
-            # Never let logging break the agent.
+            # 日志异常不能干扰 agent 主流程
             pass

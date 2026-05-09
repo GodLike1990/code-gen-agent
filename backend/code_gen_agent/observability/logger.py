@@ -1,4 +1,4 @@
-"""Structured JSON logging with per-thread collection."""
+"""结构化 JSON 日志，支持按线程收集。"""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
-# Standard LogRecord attributes that must not be forwarded as custom extras.
+# 标准 LogRecord 属性，不作为自定义 extra 字段转发
 _STDLIB_ATTRS = frozenset({
     "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
     "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
@@ -20,7 +20,7 @@ _STDLIB_ATTRS = frozenset({
 
 
 def _extra_fields(record: logging.LogRecord) -> dict[str, Any]:
-    """Return all non-stdlib attributes set via ``extra=`` on the record."""
+    """返回 record 上通过 extra= 设置的所有非标准属性。"""
     return {
         k: v
         for k, v in record.__dict__.items()
@@ -36,7 +36,7 @@ class _JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        # Merge all extra fields so callers can pass arbitrary structured data.
+        # 合并所有 extra 字段，允许调用方传入任意结构化数据
         payload.update(_extra_fields(record))
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
@@ -44,7 +44,7 @@ class _JsonFormatter(logging.Formatter):
 
 
 class LogCollector(logging.Handler):
-    """Keeps the last N log records per thread_id, queryable via API."""
+    """每个 thread_id 保留最近 N 条日志，可通过 API 查询。"""
 
     def __init__(self, max_per_thread: int = 1000) -> None:
         super().__init__()
@@ -63,7 +63,7 @@ class LogCollector(logging.Handler):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        # Merge all extra fields for full fidelity in the in-memory collector.
+        # 合并所有 extra 字段，保持内存收集器的完整性
         entry.update(_extra_fields(record))
         with self._lock:
             self._store[tid].append(entry)
@@ -77,17 +77,15 @@ _collector: LogCollector | None = None
 
 
 def configure_logging(level: str = "INFO", log_file: str | None = None) -> LogCollector:
-    """Set up root logger with JSON formatter and in-memory collector.
+    """配置根 logger，使用 JSON 格式化器和内存收集器。
 
-    When ``log_file`` is provided logs go to the rotating file only (no
-    console noise). Without a log file, stdout is used as a fallback so
-    the service remains debuggable in environments where file logging is
-    unavailable.
+    提供 log_file 时日志仅写入滚动文件（不输出到控制台）。
+    未提供时回退到 stdout，确保服务在不支持文件日志的环境中仍可调试。
     """
     global _collector
     root = logging.getLogger("code_gen_agent")
     root.setLevel(level.upper())
-    # avoid duplicate handlers on re-configure
+    # 避免重复配置时叠加 handler
     for h in list(root.handlers):
         root.removeHandler(h)
 
@@ -107,11 +105,11 @@ def configure_logging(level: str = "INFO", log_file: str | None = None) -> LogCo
             root.addHandler(fh)
             file_handler_added = True
         except OSError as exc:
-            # Fall back to stdout when the log directory is not writable.
+            # 日志目录不可写时回退到 stdout
             root.warning("failed to enable file logging at %s: %s", log_file, exc)
 
     if not file_handler_added:
-        # No file handler available — use stdout as fallback only.
+        # 无文件 handler 时仅使用 stdout 作为回退
         sh = logging.StreamHandler()
         sh.setFormatter(fmt)
         root.addHandler(sh)

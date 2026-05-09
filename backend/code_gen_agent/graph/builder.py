@@ -1,14 +1,14 @@
-"""Assemble a LangGraph StateGraph from registered nodes.
+"""从注册节点组装 LangGraph StateGraph。
 
-GRAPH TOPOLOGY
-──────────────
-The GRAPH_TOPOLOGY constant below serves dual purpose:
-1. It is the authoritative definition of every node id and edge label.
-2. It is serialised and returned by GET /agent/graph/schema so the frontend
-   ReactFlow canvas can render the live graph without any hard-coding.
+图拓扑
+──────
+下方 GRAPH_TOPOLOGY 常量具有双重用途：
+1. 是所有节点 id 和边标签的权威定义。
+2. 被序列化后由 GET /agent/graph/schema 返回，
+   供前端 ReactFlow 画布无需硬编码即可渲染实时图形。
 
-Any topology change (add/remove node, change edge) must be reflected here
-*and* in the actual add_node / add_edge calls in build_graph().
+任何拓扑变更（增减节点、修改边）都必须在此处以及
+build_graph() 中的 add_node / add_edge 调用中同步更新。
 """
 from __future__ import annotations
 
@@ -41,10 +41,9 @@ from code_gen_agent.graph.state import AgentState
 from code_gen_agent.prompts.loader import PromptRegistry
 
 
-# Static topology description — also consumed by the frontend graph visualisation
-# via GET /agent/graph/schema.  Node ids here must match the add_node() keys
-# in build_graph(), and edge sources/targets must be valid node ids or the
-# special sentinels "__start__" / "__end__".
+# 静态拓扑描述 — 同时供前端图形可视化使用（GET /agent/graph/schema）
+# 节点 id 必须与 build_graph() 中 add_node() 的键一致，
+# 边的 source/target 必须是有效节点 id 或特殊哨兵 "__start__" / "__end__"
 GRAPH_TOPOLOGY: dict[str, Any] = {
     "nodes": [
         {"id": NODE_INTENT,    "label": "Intent"},
@@ -79,7 +78,7 @@ GRAPH_TOPOLOGY: dict[str, Any] = {
 
 
 def get_graph_schema() -> dict[str, Any]:
-    """Return the static topology for the frontend visualisation."""
+    """返回静态拓扑供前端可视化使用。"""
     return GRAPH_TOPOLOGY
 
 
@@ -89,19 +88,18 @@ def build_graph(
     checkpointer: Any,
     enabled_nodes: list[str] | None = None,
 ):
-    """Instantiate registered nodes and build the compiled LangGraph.
+    """实例化注册节点并构建已编译的 LangGraph。
 
     Args:
-        llm: Shared chat model instance passed to every node.
-        prompts: Loaded prompt registry (YAML templates).
-        checkpointer: LangGraph state persistence backend.
-        enabled_nodes: Optional allowlist of node names.  When provided, only
-            nodes in this list are added to the graph; any name not in the
-            registry raises RuntimeError.  Pass None to enable all nodes.
-            Note: disabling required nodes will produce an incomplete graph
-            that may raise at runtime — use only for testing partial flows.
+        llm: 传递给每个节点的共享聊天模型实例。
+        prompts: 已加载的 prompt 注册表（YAML 模板）。
+        checkpointer: LangGraph 状态持久化后端。
+        enabled_nodes: 可选的节点名称白名单。提供时仅添加列表中的节点，
+            不在注册表中的名称会抛出 RuntimeError。传入 None 则启用所有节点。
+            注意：禁用必要节点将产生不完整的图，运行时可能抛出异常，
+            仅用于测试局部流程。
     """
-    # Ensure all built-in nodes are imported/registered before checking.
+    # 确保所有内置节点在检查前已导入并注册
     import code_gen_agent.graph.nodes  # noqa: F401
 
     required = [
@@ -121,7 +119,7 @@ def build_graph(
 
     graph = StateGraph(AgentState)
 
-    # Instantiate all (or allowed) nodes with shared llm/prompts.
+    # 实例化所有（或白名单内）节点，注入共享的 llm/prompts
     node_instances = {}
     for name in required:
         if enabled_nodes is not None and name not in enabled_nodes:
@@ -130,7 +128,7 @@ def build_graph(
         node_instances[name] = cls(llm=llm, prompts=prompts)
         graph.add_node(name, node_instances[name])
 
-    # Wire topology — must mirror GRAPH_TOPOLOGY edges above.
+    # 连接拓扑 — 必须与上方 GRAPH_TOPOLOGY 的边保持一致
     graph.add_edge(START, NODE_INTENT)
     graph.add_conditional_edges(
         NODE_INTENT, route_after_intent,

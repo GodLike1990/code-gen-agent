@@ -1,4 +1,4 @@
-"""Static lint checker (Ruff for Python, ESLint for JS/TS, fallback skip)."""
+"""静态 lint 检查器（Python 用 Ruff，JS/TS 用 ESLint，否则跳过）。"""
 from __future__ import annotations
 
 import json

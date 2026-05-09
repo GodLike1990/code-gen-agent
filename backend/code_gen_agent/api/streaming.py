@@ -1,32 +1,32 @@
-"""SSE streaming for agent runs.
+"""Agent 运行的 SSE 流式处理。
 
-`stream_run` is a pure async generator: it has zero hidden dependencies,
-accepting the LangGraph iterator, the thread id, a `RequestStore`, and a
-logger. That keeps it unit-testable in isolation from FastAPI.
+`stream_run` 是纯异步生成器：无隐式依赖，
+接受 LangGraph 迭代器、thread id、RequestStore 和 logger，
+便于在不依赖 FastAPI 的情况下单独进行单元测试。
 
-SSE FRAME CONTRACT
-──────────────────
-Every frame is a dict with {"event": <str>, "data": <json-str>}.
-Event names and data shapes the frontend depends on:
+SSE 帧协议
+──────────
+每帧为 {"event": <str>, "data": <json-str>}。
+前端依赖的事件名称及数据结构：
 
-  state_delta   {"thread_id", "node"}                   — triggers a state poll
+  state_delta   {"thread_id", "node"}                   — 触发前端状态轮询
   clarify       {"thread_id", "node", "type", "questions", ...}
   hitl          {"thread_id", "node", "type", "summary", ...}
-  interrupt     {"thread_id", "node", "type", ...}       — generic interrupt
-  hitl_decision {"thread_id", "node", "type", "action"}  — user's HITL decision
-  done          {"final_status"}                         — run finished
+  interrupt     {"thread_id", "node", "type", ...}       — 通用 interrupt
+  hitl_decision {"thread_id", "node", "type", "action"}  — 用户的 HITL 决策
+  done          {"final_status"}                         — 运行结束
   error         {"thread_id", "error_type", "message", "last_node"}
 
-FINAL STATUS STATE MACHINE
-───────────────────────────
-  "done"        — default; set at start, kept if the run completes normally
-  "interrupted" — overwritten when a LangGraph interrupt is detected
-  "aborted"     — overwritten when hitl_decision action == "abort"
-  "cancelled"   — overwritten in CancelledError handler (client disconnected)
-  "failed"      — overwritten in Exception handler (unhandled error)
+final_status 状态机
+───────────────────
+  "done"        — 默认值；运行开始时设置，正常完成时保留
+  "interrupted" — 检测到 LangGraph interrupt 时覆盖
+  "aborted"     — hitl_decision action == "abort" 时覆盖
+  "cancelled"   — CancelledError（客户端断开）时覆盖
+  "failed"      — Exception（未处理错误）时覆盖
 
-The final_status is written to RequestStore in the `finally` block and also
-included in the "done" SSE frame so the frontend can update its local state.
+final_status 在 finally 块中写入 RequestStore，
+同时包含在 "done" SSE 帧中，供前端立即更新本地状态。
 """
 from __future__ import annotations
 
@@ -60,11 +60,10 @@ async def stream_run(
     store: RequestStore,
     logger: logging.Logger,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Translate LangGraph stream items into SSE frames.
+    """将 LangGraph 流式数据项转换为 SSE 帧。
 
-    Emits `state_delta`, node-specific event types, `interrupt` /
-    `clarify` / `hitl`, `done`, and `error` frames. Updates the request
-    store with a `final_status` + `summary` in the `finally` block.
+    发出 state_delta、节点专属事件类型、interrupt / clarify / hitl、
+    done 和 error 帧。在 finally 块中将 final_status + summary 写入请求存储。
     """
     final_status = STATUS_DONE
     last_node: str | None = None
@@ -75,19 +74,18 @@ async def stream_run(
             for node, partial in update.items():
                 last_node = node
 
-                # LangGraph emits special updates under the synthetic key
-                # "__interrupt__" when a node calls interrupt().  The value
-                # is a tuple/list of Interrupt objects (not a dict), each
-                # carrying a `.value` dict that the node passed to interrupt().
-                # We translate each Interrupt into a clarify/hitl SSE frame
-                # so the frontend can render the appropriate UI.
+                # LangGraph 在节点调用 interrupt() 时，以合成键 "__interrupt__"
+                # 发出特殊更新。值是 Interrupt 对象的元组/列表，每个对象携带
+                # 节点传给 interrupt() 的 .value 字典。
+                # 将每个 Interrupt 转换为 clarify/hitl SSE 帧，
+                # 以便前端渲染对应的交互 UI。
                 if node == "__interrupt__" or not isinstance(partial, dict):
                     interrupts = partial if isinstance(partial, (list, tuple)) else [partial]
                     for itp in interrupts:
                         val = getattr(itp, "value", None)
                         if not isinstance(val, dict):
                             continue
-                        # Any interrupt means the run is paused waiting for input.
+                        # 任何 interrupt 都意味着运行已暂停等待输入
                         final_status = STATUS_INTERRUPTED
                         itype = val.get("type") or EVENT_INTERRUPT
                         yield {
@@ -109,11 +107,9 @@ async def stream_run(
                 for ev in events:
                     if ev.get("type") == EVENT_INTERRUPT:
                         final_status = STATUS_INTERRUPTED
-                    # The hitl node emits a "hitl_decision" event that records
-                    # the user's chosen action.  We detect abort here — before
-                    # routing — so the "done" frame carries "aborted" rather
-                    # than the default "done", giving the frontend an immediate
-                    # signal to update status without waiting for the next poll.
+                    # hitl 节点发出 "hitl_decision" 事件，记录用户选择的动作。
+                    # 在路由之前检测 abort，确保 "done" 帧携带 "aborted"，
+                    # 让前端立即更新状态而无需等待下次轮询。
                     if ev.get("type") == EVENT_HITL_DECISION and ev.get("action") == HITL_ACTION_ABORT:
                         final_status = STATUS_ABORTED
                     yield {
@@ -126,9 +122,9 @@ async def stream_run(
                 }
         yield {"event": EVENT_DONE, "data": json.dumps({"final_status": final_status})}
     except asyncio.CancelledError:
-        # Client disconnected / ASGI task cancelled.  DO NOT swallow: re-raise
-        # so uvicorn + starlette can clean up correctly.  Also DO NOT yield a
-        # frame — the client is already gone and yielding would raise again.
+        # 客户端断开 / ASGI 任务取消。不要吞掉异常：重新抛出，
+        # 让 uvicorn + starlette 正确清理。也不要 yield 帧，
+        # 客户端已断开，yield 会再次抛出异常。
         final_status = STATUS_CANCELLED
         logger.info(
             "stream_cancelled",

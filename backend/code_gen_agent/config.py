@@ -1,4 +1,4 @@
-"""Agent configuration."""
+"""Agent 配置。"""
 from __future__ import annotations
 
 import os
@@ -12,14 +12,14 @@ CheckerName = Literal["lint", "security", "compile", "test", "llm_review"]
 
 @dataclass
 class AgentConfig:
-    """Simple configuration: pass api_key and go.
+    """简洁配置：传入 api_key 即可启动。
 
     Example:
         >>> cfg = AgentConfig(provider="openai", api_key="sk-...")
         >>> agent = CodeGenAgent(cfg)
     """
 
-    # ---- Model ----
+    # ---- 模型 ----
     provider: Provider = "openai"
     api_key: str = ""
     model: str | None = None
@@ -27,33 +27,33 @@ class AgentConfig:
     temperature: float = 0.2
     request_timeout: float = 60.0
 
-    # ---- Repair ----
+    # ---- 修复 ----
     max_repairs: int = 5
 
-    # ---- Checkers ----
+    # ---- 检查器 ----
     enable_checks: list[CheckerName] = field(
         default_factory=lambda: ["lint", "security", "compile", "test", "llm_review"]
     )
     checker_timeout: float = 60.0
 
-    # ---- State persistence ----
+    # ---- 状态持久化 ----
     state_backend: StateBackend = "sqlite"
-    state_dsn: str = ".agent_state.sqlite"  # file path / redis url / db url
+    state_dsn: str = ".agent_state.sqlite"  # 文件路径 / redis url / db url
 
-    # ---- Observability ----
+    # ---- 可观测性 ----
     langsmith_enabled: bool = False
     langsmith_api_key: str | None = None
     langsmith_project: str = "code-gen-agent"
     log_level: str = "INFO"
     log_file: str | None = "logs/agent.log"
 
-    # ---- Prompt templates ----
-    prompts_dir: str | None = None  # default: package builtin
+    # ---- Prompt 模板 ----
+    prompts_dir: str | None = None  # 默认使用内置包路径
 
-    # ---- Sandbox ----
+    # ---- 沙盒 ----
     workspace_root: str = "data/workspaces"
 
-    # ---- Request records (decoupled from graph state) ----
+    # ---- 请求记录（与图状态解耦） ----
     requests_dir: str = "data/requests"
 
     def __post_init__(self) -> None:

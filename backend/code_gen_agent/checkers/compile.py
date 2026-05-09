@@ -1,4 +1,4 @@
-"""Compile / syntax checker per language."""
+"""各语言编译/语法检查器。"""
 from __future__ import annotations
 
 import shutil

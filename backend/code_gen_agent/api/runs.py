@@ -1,11 +1,11 @@
-"""Agent run lifecycle endpoints.
+"""Agent 运行生命周期端点。
 
-Covers: create, resume, events subscription, state, logs, usage, interrupt, download.
+涵盖：创建、恢复、事件订阅、状态、日志、用量、interrupt、下载。
 
-Architecture (A1):
-- POST /agent/runs        → schedule background task, return {"thread_id", "status"}
-- POST /agent/runs/{tid}/resume → same: schedule resume, return immediately
-- GET  /agent/runs/{tid}/events → SSE stream from the per-thread replay buffer
+架构（A1）：
+- POST /agent/runs           → 调度后台任务，立即返回 {"thread_id", "status"}
+- POST /agent/runs/{tid}/resume → 同上：调度恢复任务，立即返回
+- GET  /agent/runs/{tid}/events → 从每线程重放缓冲区 SSE 流式推送
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/agent/runs")
 
 
 def _track(request: Request, tid: str) -> None:
-    """Append thread id to the dev-only in-memory list, dedup by membership."""
+    """将 thread id 追加到仅用于开发的内存列表，通过成员检测去重。"""
     threads = getattr(request.app.state, "threads", None)
     if threads is None:
         return
@@ -46,7 +46,7 @@ async def create_run(
     store: RequestStore = Depends(get_request_store),
     runner: Runner = Depends(get_runner),
 ) -> dict:
-    """Start a new run in the background and return immediately."""
+    """在后台启动新运行并立即返回。"""
     tid = req.thread_id or agent.new_thread_id()
     _track(request, tid)
     log.info(
@@ -75,7 +75,7 @@ async def resume(
     store: RequestStore = Depends(get_request_store),
     runner: Runner = Depends(get_runner),
 ) -> dict:
-    """Resume a paused run in the background and return immediately."""
+    """在后台恢复暂停的运行并立即返回。"""
     _track(request, thread_id)
     log.info("run_resume", extra={"thread_id": thread_id, "event": "run_resume"})
     store.update(thread_id, status=STATUS_RUNNING)
@@ -91,10 +91,10 @@ async def stream_events(
     thread_id: str = Depends(valid_tid),
     runner: Runner = Depends(get_runner),
 ) -> Any:
-    """SSE endpoint: replay buffered frames then stream live frames.
+    """SSE 端点：先重放缓冲帧，再流式推送实时帧。
 
-    Clients connect here after receiving ``thread_id`` from POST /agent/runs.
-    They can reconnect at any time; buffered frames ensure they catch up.
+    客户端在收到 POST /agent/runs 返回的 thread_id 后连接此端点。
+    可随时重连，缓冲帧确保不遗漏历史数据。
     """
     try:
         gen = runner.subscribe(thread_id)
@@ -137,7 +137,7 @@ def get_logs(
     if agent.config.log_file:
         disk = read_log_file(agent.config.log_file, thread_id)
 
-    # Merge with (ts, event) as dedup key; memory wins.
+    # 以 (ts, event) 为去重键合并；内存记录优先
     bucket: dict[tuple, dict] = {}
     for r in disk:
         bucket[(r.get("ts"), r.get("event"))] = r
@@ -159,7 +159,7 @@ def get_interrupt(
     thread_id: str = Depends(valid_tid),
     agent: CodeGenAgent = Depends(get_agent),
 ) -> dict:
-    """Return the pending interrupt (if any) so the UI can recover on reload."""
+    """返回待处理的 interrupt（如有），供 UI 页面刷新后恢复。"""
     try:
         snap = agent.get_state(thread_id)
     except Exception as e:
@@ -209,7 +209,7 @@ def download_artifact(
     thread_id: str = Depends(valid_tid),
     agent: CodeGenAgent = Depends(get_agent),
 ) -> FileResponse:
-    """Stream the packaged ZIP for a completed run."""
+    """流式传输已完成运行的 ZIP 打包文件。"""
     try:
         snap = agent.get_state(thread_id)
     except Exception as e:

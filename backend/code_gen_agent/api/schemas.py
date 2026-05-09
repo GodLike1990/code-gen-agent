@@ -1,4 +1,4 @@
-"""Request/response schemas for the HTTP API."""
+"""HTTP API 的请求/响应 schema。"""
 from __future__ import annotations
 
 from typing import Any

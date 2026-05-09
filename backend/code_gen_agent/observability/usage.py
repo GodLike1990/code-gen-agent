@@ -1,4 +1,4 @@
-"""Aggregate token usage per thread_id."""
+"""按 thread_id 聚合 token 用量。"""
 from __future__ import annotations
 
 import threading
@@ -8,7 +8,7 @@ from code_gen_agent.llm.usage import UsageTracker
 
 
 class UsageAggregator:
-    """Holds one UsageTracker per thread_id."""
+    """每个 thread_id 持有一个 UsageTracker。"""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()

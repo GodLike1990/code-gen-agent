@@ -1,11 +1,11 @@
-"""HTTP request/response lifecycle logging middleware.
+"""HTTP 请求/响应生命周期日志中间件。
 
-Logs method, path, query, status code, duration, client IP, user agent,
-and optional request/response body previews. Body capture is skipped for
-SSE endpoints and file downloads to avoid buffering large streams.
+记录方法、路径、查询参数、状态码、耗时、客户端 IP、User-Agent，
+以及可选的请求/响应体预览。SSE 端点和文件下载端点跳过 body 捕获，
+避免缓冲大型流。
 
-Secret headers (Authorization, token, api_key, password, …) are redacted
-from the logged header map. Bodies are truncated at BODY_PREVIEW_BYTES.
+敏感请求头（Authorization、token、api_key、password 等）在日志中脱敏。
+Body 截断上限为 BODY_PREVIEW_BYTES。
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ log = get_logger("http")
 
 BODY_PREVIEW_BYTES = 1024
 
-# Paths where body capture must be skipped (streaming / binary responses).
+# 必须跳过 body 捕获的路径后缀（流式/二进制响应）
 _SKIP_BODY_SUFFIXES = ("/events", "/download")
 
 _REDACT_HEADERS = frozenset({
@@ -43,7 +43,7 @@ def _skip_body(path: str) -> bool:
 
 
 class HttpLoggingMiddleware(BaseHTTPMiddleware):
-    """Emit one structured log line per HTTP request with lifecycle metadata."""
+    """每次 HTTP 请求输出一条携带生命周期元数据的结构化日志。"""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start = time.perf_counter()

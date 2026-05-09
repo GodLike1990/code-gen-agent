@@ -1,8 +1,7 @@
-"""Read JSON-Lines log file and filter by thread_id.
+"""读取 JSON-Lines 日志文件并按 thread_id 过滤。
 
-Used as a fallback for `/agent/runs/{tid}/logs` when the in-memory
-`LogCollector` doesn't have entries for the requested thread (e.g. after a
-backend restart).
+用于 /agent/runs/{tid}/logs 的回退方案：
+当内存 LogCollector 中没有目标线程的记录时（如后端重启后）从磁盘读取。
 """
 from __future__ import annotations
 
@@ -12,11 +11,10 @@ from typing import Any
 
 
 def read_log_file(path: str, thread_id: str, limit: int = 1000) -> list[dict[str, Any]]:
-    """Return log records matching `thread_id`, ascending by ts, capped at `limit`.
+    """返回匹配 thread_id 的日志记录，按 ts 升序，上限 limit 条。
 
-    Silent on missing file / permission / malformed lines — returns `[]` or
-    best-effort partial list. Callers should treat the output as a hint, not
-    the source of truth.
+    文件缺失、权限不足或行格式错误时静默处理，返回 [] 或尽力而为的部分列表。
+    调用方应将输出视为参考，而非权威来源。
     """
     if not path:
         return []
@@ -43,7 +41,7 @@ def read_log_file(path: str, thread_id: str, limit: int = 1000) -> list[dict[str
     except OSError:
         return out
 
-    # Keep latest `limit` records, chronological order.
+    # 保留最近 limit 条，按时间升序
     if len(out) > limit:
         out = out[-limit:]
     return out
