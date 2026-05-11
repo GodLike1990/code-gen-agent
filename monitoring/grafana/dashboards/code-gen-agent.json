@@ -1,0 +1,105 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Active Runner Tasks",
+      "id": 1,
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(agent_run_active)", "refId": "A"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 5}, {"color": "red", "value": 20}]}}}
+    },
+    {
+      "type": "stat",
+      "title": "Total HTTP QPS (5m)",
+      "id": 2,
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "sum(rate(agent_http_requests_total[5m]))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Node Error Rate (5m)",
+      "id": 3,
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "(sum(rate(agent_node_runs_total{status=\"error\"}[5m])) or vector(0)) / clamp_min(sum(rate(agent_node_runs_total[5m])), 1)", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "orange", "value": 0.01}, {"color": "red", "value": 0.05}]}}}
+    },
+    {
+      "type": "table",
+      "title": "Build Info",
+      "id": 4,
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "agent_build_info", "refId": "A", "instant": true, "format": "table"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Node QPS by node",
+      "id": 5,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "sum by (node) (rate(agent_node_runs_total[1m]))", "refId": "A", "legendFormat": "{{node}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Node P95 Duration (seconds)",
+      "id": 6,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, node) (rate(agent_node_duration_seconds_bucket[5m])))", "refId": "A", "legendFormat": "{{node}}"}],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Node Concurrency (in progress)",
+      "id": 7,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [{"expr": "sum by (node) (agent_node_in_progress)", "refId": "A", "legendFormat": "{{node}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Node Errors (1m)",
+      "id": 8,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [{"expr": "sum by (node) (rate(agent_node_runs_total{status=\"error\"}[1m])) or vector(0)", "refId": "A", "legendFormat": "{{node}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Tokens (stacked by model, kind)",
+      "id": 9,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "targets": [{"expr": "sum by (model, kind) (rate(agent_llm_tokens_total[5m]))", "refId": "A", "legendFormat": "{{model}} / {{kind}}"}],
+      "fieldConfig": {"defaults": {"custom": {"stacking": {"mode": "normal"}}}}
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Calls by status",
+      "id": 10,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "targets": [{"expr": "sum by (status) (rate(agent_llm_calls_total[1m]))", "refId": "A", "legendFormat": "{{status}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Duration P95 (by route)",
+      "id": 11,
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, route) (rate(agent_http_request_duration_seconds_bucket[5m])))", "refId": "A", "legendFormat": "{{route}}"}],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["code-gen-agent"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "Code Gen Agent",
+  "uid": "code-gen-agent",
+  "version": 3,
+  "weekStart": ""
+}

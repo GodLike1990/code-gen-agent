@@ -15,6 +15,7 @@ from code_gen_agent import CodeGenAgent
 from code_gen_agent.api import build_api_router
 from code_gen_agent.api.middleware import HttpLoggingMiddleware
 from code_gen_agent.bootstrap import init_agent, init_request_store, init_runner
+from code_gen_agent.observability.instrumentation import HttpMetricsMiddleware, setup_metrics
 from code_gen_agent.observability.logger import get_logger
 
 log = get_logger("server")
@@ -28,6 +29,9 @@ def create_app(agent: CodeGenAgent | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
+        # 启动 Prometheus /metrics 端点（由 AGENT_METRICS_ENABLED 开关，默认开启；
+        # 端口由 init_metrics 内部读取 AGENT_METRICS_PORT，默认 9464）
+        setup_metrics(provider_name=agent.config.provider)
         await agent.setup()
         log.info(
             "agent_ready",
@@ -54,6 +58,8 @@ def create_app(agent: CodeGenAgent | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(HttpLoggingMiddleware)
+    # HTTP 指标中间件（必须在 app 构建早期加入）
+    app.add_middleware(HttpMetricsMiddleware)
 
     # 通过 api/deps.py 中的 FastAPI Depends 访问共享状态
     app.state.agent = agent

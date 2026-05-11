@@ -1,0 +1,23 @@
+# Prometheus scrape 配置
+# 目标：拉取 backend 容器的 /metrics（由 prometheus_client 在 9464 暴露）
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    service: code-gen-agent
+
+# alerting: ~              # 本期不配置 Alertmanager
+# rule_files: []           # 本期不配置告警规则
+
+scrape_configs:
+  - job_name: code-gen-agent-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backend:9464']
+        labels:
+          component: backend
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

@@ -38,6 +38,8 @@ backend/.agent_workspaces/
 # Logs — ignore the files, keep the directory (via .gitkeep)
 backend/logs/*
 !backend/logs/.gitkeep
+monitoring/logs/*
+!monitoring/logs/.gitkeep
 backend/data/*
 !backend/data/.gitkeep
 !backend/data/requests/

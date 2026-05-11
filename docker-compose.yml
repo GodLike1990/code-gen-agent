@@ -1,9 +1,11 @@
 # =============================================================================
 # docker-compose.yml
 #
-# Orchestrates two services:
-#   backend  — FastAPI + LangGraph agent (port 8000)
-#   frontend — Nginx serving the Vite build, proxying /agent/* to backend
+# Orchestrates four services:
+#   backend    — FastAPI + LangGraph agent (API 8000, metrics 9464)
+#   frontend   — Nginx serving the Vite build, proxying /agent/* to backend
+#   prometheus — Metrics scraper + TSDB (UI on 9090)
+#   grafana    — Visualization dashboards (UI on 3000, default admin/admin)
 #
 # Quick start:
 #   1. cp backend/.env.example backend/.env
@@ -11,13 +13,17 @@
 #   3. docker compose up --build
 #
 # Access:
-#   Frontend:   http://localhost
+#   Frontend:    http://localhost
 #   Backend API: http://localhost:8000  (optional direct access)
+#   Prometheus:  http://localhost:9090
+#   Grafana:     http://localhost:3000  (admin/admin)
 #
 # Data persistence:
-#   backend/data/   — request records + generated workspaces (bind mount)
-#   backend/logs/   — structured JSON logs (bind mount)
-#   SQLite state is stored at backend/data/.agent_state.sqlite
+#   backend/data/          — request records + generated workspaces (bind mount)
+#   backend/logs/          — structured JSON logs (bind mount)
+#   monitoring/logs/       — prometheus.log + grafana.log (bind mount)
+#   prometheus_data        — named volume for TSDB
+#   grafana_data           — named volume for Grafana DB
 # =============================================================================
 
 services:
@@ -36,6 +42,8 @@ services:
     environment:
       AGENT_HOST: "0.0.0.0"
       AGENT_PORT: "8000"
+      AGENT_METRICS_ENABLED: "true"
+      AGENT_METRICS_PORT: "9464"
       AGENT_STATE_DSN: "/app/data/.agent_state.sqlite"
       AGENT_REQUESTS_DIR: "/app/data/requests"
       AGENT_WORKSPACE_ROOT: "/app/data/workspaces"
@@ -49,6 +57,9 @@ services:
       # Expose backend port for direct API access / debugging.
       # Remove this line in production if you only want nginx as entry point.
       - "8000:8000"
+    expose:
+      # Accessible only within the compose network — prometheus scrapes here
+      - "9464"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -70,3 +81,60 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Prometheus: scrape backend:9464 and serve UI on :9090
+  # stderr is tee'd to ./monitoring/logs/prometheus.log (Prometheus itself has
+  # no native file-logging option).
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        exec /bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention.time=15d \
+          --web.enable-lifecycle \
+          2>&1 | tee -a /logs/prometheus.log
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/logs:/logs
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana: auto-provisioned with Prometheus datasource + dashboard.
+  # Writes grafana.log to ./monitoring/logs via GF_LOG_MODE=console file.
+  # Default login: admin / admin (override via GF_ADMIN_USER / GF_ADMIN_PASSWORD)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.5
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GF_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GF_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_LOG_MODE: "console file"
+      GF_LOG_LEVEL: "info"
+      GF_PATHS_LOGS: "/var/log/grafana"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/logs:/var/log/grafana
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:

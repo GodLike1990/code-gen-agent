@@ -49,11 +49,13 @@ COPY code_gen_agent/ ./code_gen_agent/
 # permission errors on first start (Docker creates missing dirs as root).
 RUN mkdir -p data/requests data/workspaces logs
 
-EXPOSE 8000
+EXPOSE 8000 9464
 
 # Default env — overridden by docker-compose environment / env_file
 ENV AGENT_HOST=0.0.0.0 \
     AGENT_PORT=8000 \
+    AGENT_METRICS_ENABLED=true \
+    AGENT_METRICS_PORT=9464 \
     AGENT_STATE_DSN=/app/data/.agent_state.sqlite \
     AGENT_REQUESTS_DIR=/app/data/requests \
     AGENT_WORKSPACE_ROOT=/app/data/workspaces \

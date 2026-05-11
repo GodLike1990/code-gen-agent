@@ -1,8 +1,8 @@
 # Code Generation AI Agent
 
-A LangGraph-based code generation AI agent featuring ReAct self-repair and Human-in-the-Loop (HITL) interaction, with a web UI for requirement intake, graph/state observation, HITL handling, and LangSmith observability.
+基于 LangGraph 的代码生成 AI Agent，内置 ReAct 自修复与 Human-in-the-Loop（HITL）交互；前端 Web UI 提供需求录入、图 / 状态可观测、HITL 处理，以及 LangSmith 链路追踪。
 
-## Architecture
+## 架构
 
 ```
 ┌────────────────┐    HTTP/SSE    ┌────────────────────────┐
@@ -25,55 +25,51 @@ A LangGraph-based code generation AI agent featuring ReAct self-repair and Human
                   └────────────────────────────────────────────┘
 ```
 
-Graph nodes:
-
-- **intent** – classify user request, detect missing info
-- **clarify** – `interrupt()` for interactive clarification
-- **decompose** – split into file-level tasks
-- **codegen** – generate full files or apply repair diff
-- **checks** – parallel: lint / security / compile / test / llm_review
-- **repair** – ReAct strategist (patch / regen / reclarify)
-- **hitl** – escalate after `max_repairs` attempts (default 5); user can retry, patch, or abort
-- **verify** – LLM acceptance review; gaps trigger repair or HITL escalation
-- **package** – zip generated workspace into a downloadable artifact
-
-## Project Structure
+## 项目结构
 
 ```
 .
-├── docker-compose.yml        # One-command full-stack startup
+├── docker-compose.yml        # 一键全栈启动（backend + frontend + prometheus + grafana）
 ├── backend/
-│   ├── Dockerfile            # Multi-stage Python image
+│   ├── Dockerfile            # Python 多阶段镜像
 │   ├── .dockerignore
 │   ├── code_gen_agent/
-│   │   ├── agent.py          # top-level facade
+│   │   ├── agent.py          # 顶层门面
+│   │   ├── bootstrap.py      # agent / runner / request_store 构建装配
 │   │   ├── config.py         # AgentConfig
-│   │   ├── server.py         # FastAPI + SSE
-│   │   ├── sandbox.py
-│   │   ├── llm/              # provider adapters + usage tracker
-│   │   ├── persistence/      # sqlite/redis/db/memory checkpointers
-│   │   ├── observability/    # logging + LangSmith + usage aggregation
-│   │   ├── prompts/          # YAML templates per node
+│   │   ├── server.py         # FastAPI 入口 + 生命周期
+│   │   ├── sandbox.py        # 生成代码的工作区隔离
+│   │   ├── api/              # REST / SSE 路由、依赖、中间件、响应模型
+│   │   ├── runtime/          # 后台 Runner：每线程一个 asyncio.Task + SSE 重放缓冲
+│   │   ├── llm/              # 多供应商适配 + token/cost 统计
+│   │   ├── persistence/      # sqlite / redis / postgres / memory checkpointer
+│   │   ├── observability/    # 结构化日志 + LangSmith + Prometheus 指标
+│   │   ├── prompts/          # 节点 YAML 模板（Jinja2）
 │   │   ├── graph/
-│   │   │   ├── builder.py    # StateGraph assembly
-│   │   │   ├── registry.py   # pluggable node registry
-│   │   │   └── nodes/        # 7 nodes
-│   │   └── checkers/         # 5-dim checks with registry
+│   │   │   ├── builder.py    # StateGraph 拼装
+│   │   │   ├── registry.py   # 可插拔节点注册表
+│   │   │   └── nodes/        # 9 个图节点实现
+│   │   └── checkers/         # 五维检查 + 注册表
 │   ├── tests/
 │   ├── examples/
 │   └── configs/
-└── frontend/             # React + TypeScript UI
-    ├── Dockerfile            # Multi-stage Node → nginx image
-    ├── .dockerignore
-    ├── nginx.conf            # SPA routing + /agent/* proxy + SSE config
-    └── src/
-        ├── api/          # client + SSE reader + types
-        ├── store/        # Zustand session store
-        ├── components/   # Layout, Timeline, GraphCanvas, CodeViewer, ...
-        └── pages/        # Requirement / Graph / HITL / Observability
+├── frontend/                 # React + TypeScript UI
+│   ├── Dockerfile            # Node → nginx 多阶段镜像
+│   ├── .dockerignore
+│   ├── nginx.conf            # SPA 路由 + /agent/* 代理 + SSE 配置
+│   └── src/
+│       ├── api/              # 客户端 + SSE 读取器 + 类型
+│       ├── store/            # Zustand 会话 store
+│       ├── components/       # Layout / Timeline / GraphCanvas / CodeViewer 等
+│       └── pages/            # Requirement / Graph / History / Observability
+└── monitoring/               # Prometheus + Grafana 监控栈
+    ├── prometheus/prometheus.yml
+    ├── grafana/provisioning/ # datasource + dashboard provider（自动加载）
+    ├── grafana/dashboards/code-gen-agent.json
+    └── README.md
 ```
 
-## Setup & Run
+## 启动与运行
 
 ### Docker
 
@@ -86,39 +82,43 @@ docker compose up --build
 访问：
 - 前端：http://localhost
 - 后端 API：http://localhost:8000
+- Backend metrics：http://localhost:9464/metrics
+- Prometheus：http://localhost:9090
+- Grafana：http://localhost:3000（默认 `admin` / `admin`）
 
 **`backend/.env` 关键配置项：**
 
-| Key | Values | Effect |
+| Key | 取值 | 作用 |
 |---|---|---|
-| `AGENT_API_KEY` | your LLM API key | **必填** |
-| `APP_ENV` | `dev` (default) / `prod` / `full` | 控制安装的依赖范围 |
-| `ENABLE_LANGSMITH` | `true` / `false` | 开启 LangSmith tracing |
-| `ENABLE_LLM_REVIEW` | `true` / `false` | 开启 LLM 自审 checker |
-| `ENABLE_SECURITY_CHECK` | `true` / `false` | 开启安全 checker |
-| `ENABLE_TEST_CHECK` | `true` / `false` | 开启测试运行 checker |
+| `AGENT_API_KEY` | LLM API key | **必填** |
+| `APP_ENV` | `dev`（默认）/ `prod` / `full` | 控制安装依赖范围 |
+| `ENABLE_LANGSMITH` | `true` / `false` | 接入 LangSmith 链路追踪 |
+| `ENABLE_LLM_REVIEW` | `true` / `false` | 启用 LLM 自审 checker |
+| `ENABLE_SECURITY_CHECK` | `true` / `false` | 启用安全 checker（Semgrep/Bandit） |
+| `ENABLE_TEST_CHECK` | `true` / `false` | 启用测试运行 checker |
+| `AGENT_METRICS_ENABLED` | `true`（默认）/ `false` | 是否启用 Prometheus 指标端点 |
+| `AGENT_METRICS_PORT` | `9464`（默认） | 指标暴露端口 |
 
-完整配置项见 `backend/.env.example` 和 `backend/code_gen_agent/config.py`。
+完整配置见 `backend/.env.example` 与 `backend/code_gen_agent/config.py`。
 
-### Runtime data layout
+### 运行时数据布局
 
-The backend uses **three decoupled on-disk stores** — each with a single responsibility:
+Backend 采用 **三份职责解耦的磁盘存储**：
 
-| Path | Owner | Content |
+| 路径 | 归属 | 内容 |
 |---|---|---|
-| `backend/.agent_state.sqlite` | LangGraph checkpointer | Graph state per thread (auto-managed) |
-| `backend/data/requests/{tid}.json` | `RequestStore` | Original user request + status/summary |
-| `backend/data/workspaces/{tid}/` | codegen node | Generated code files for that thread |
-| `backend/logs/agent.log` | RotatingFileHandler | JSON-line logs (10 MB × 5) |
+| `backend/.agent_state.sqlite` | LangGraph checkpointer | 每个 thread 的图状态（自动管理） |
+| `backend/data/requests/{tid}.json` | `RequestStore` | 原始需求 + 状态 / summary |
+| `backend/data/workspaces/{tid}/` | codegen 节点 | 该线程生成的代码文件 |
+| `backend/logs/agent.log` | RotatingFileHandler | JSON 行日志（10MB × 5 滚动） |
 
-The frontend **History** page (`/history`) reads `data/requests/` via `GET /agent/history`
-to show all past sessions; clicking a row restores `threadId` and jumps to `/graph`
-where the checkpointer replays the saved state.
+前端 **History** 页（`/history`）通过 `GET /agent/history` 读取 `data/requests/`，
+点击记录可恢复 `threadId` 并跳转至 `/graph`，由 checkpointer 回放保存的状态。
 
-All three locations are gitignored (empty dirs kept via `.gitkeep`); override with
-`AGENT_LOG_FILE` / `AGENT_REQUESTS_DIR` / `AGENT_WORKSPACE_ROOT` / `AGENT_STATE_DSN` in `.env`.
+上述路径均已加入 `.gitignore`（通过 `.gitkeep` 保留空目录）；可通过 `.env` 中的
+`AGENT_LOG_FILE` / `AGENT_REQUESTS_DIR` / `AGENT_WORKSPACE_ROOT` / `AGENT_STATE_DSN` 覆盖。
 
-### Library Usage
+### 作为库使用
 
 ```python
 from code_gen_agent import CodeGenAgent, AgentConfig
@@ -130,82 +130,85 @@ agent = CodeGenAgent(AgentConfig(
 result = agent.run("Create a FastAPI TODO service with JWT auth")
 ```
 
-Switch providers by changing `provider` and `api_key` — no code changes needed.
+切换供应商只需改 `provider` + `api_key`，无需改代码。
 
-## Features
+## 特性
 
-- **One-line model init** — only `provider` + `api_key` required
-- **Multi-provider** — OpenAI / Anthropic / DeepSeek / ERNIE via a unified factory
-- **ReAct self-repair** — up to 5 attempts, auto-escalates to HITL
-- **HITL** — LangGraph `interrupt()` + checkpointer enables pause/resume across requests
-- **5-dim checks** — lint (Ruff/ESLint), security (Semgrep/Bandit), compile, test (pytest/jest), LLM self-review — all parallel
-- **Pluggable** — `@register_node` and `@register_checker` decorators
-- **Prompt externalization** — YAML templates with Jinja2, hot-reloadable
-- **Multi-backend state** — sqlite (default) / redis / postgres / memory
-- **Observability** — LangSmith tracing, structured per-thread JSON logs, token usage + cost accounting
-- **Web UI** — four pages:
-  - `/requirement` — intake, clarification Q&A, HITL failure review & manual patch, file preview, ZIP download
-  - `/graph` — live ReactFlow topology with per-node status and colour legend
-  - `/history` — past sessions; click a row to restore the session
-  - `/observability` — embedded LangSmith, log table, token stats
+- **一行初始化**：只需 `provider` + `api_key`
+- **多供应商**：OpenAI / Anthropic / DeepSeek / ERNIE 通过统一 factory 接入
+- **ReAct 自修复**：最多 5 次尝试，失败自动升级 HITL
+- **HITL**：基于 LangGraph `interrupt()` + checkpointer，可跨请求暂停 / 恢复
+- **五维检查**：lint（Ruff/ESLint）、security（Semgrep/Bandit）、compile、test（pytest/jest）、LLM 自审，并行执行
+- **可插拔**：`@register_node` 与 `@register_checker` 装饰器
+- **Prompt 外置**：Jinja2 YAML 模板，支持热加载
+- **多种状态后端**：sqlite（默认）/ redis / postgres / memory
+- **可观测**：LangSmith 链路追踪、分 thread 的结构化 JSON 日志、token 用量与成本核算、**Prometheus 指标 + Grafana 仪表盘**
+- **Web UI**（四个页面）：
+  - `/requirement` — 需求录入、澄清问答、HITL 失败检阅与人工 patch、文件预览、ZIP 下载
+  - `/graph` — ReactFlow 实时拓扑，逐节点状态与颜色图例
+  - `/history` — 历史会话；点击某行恢复会话
+  - `/observability` — 内嵌 LangSmith、日志表、token 统计
 
-## End-to-end Verification Scenarios
+## 端到端验证场景
 
-1. **Happy path**: submit a simple request → intent/decompose/codegen/checks all pass → done
-2. **Clarification**: vague request → intent low confidence → clarify modal → resume
-3. **ReAct repair**: inject a failing check → repair node generates fix → checks re-run
-4. **HITL escalation**: max_repairs failures → escalate → user chooses retry/patch/abort on the Requirement page
+1. **Happy path**：提交简单需求 → intent / decompose / codegen / checks 全部通过 → 完成
+2. **澄清流程**：模糊需求 → intent 置信度低 → 弹出澄清窗 → 恢复
+3. **ReAct 修复**：注入一个会失败的 checker → repair 节点生成修复 → 重跑 checks
+4. **HITL 升级**：超过 `max_repairs` 次失败 → 升级至 HITL → 在 Requirement 页选择重试 / 打补丁 / 放弃
 
-## Extending
+## 配置参考
 
-Add a checker:
+详见 `backend/code_gen_agent/config.py`（`AgentConfig`）与 `backend/.env.example`。
 
-```python
-from code_gen_agent.checkers.base import register_checker, CheckResult
-
-@register_checker("custom")
-class MyChecker:
-    name = "custom"
-    async def run(self, workspace, files, context=None):
-        return CheckResult(name=self.name, passed=True)
-```
-
-Then set `enable_checks=[..., "custom"]` in `AgentConfig`.
-
-Add a node: subclass `BaseNode`, decorate with `@register_node("myname")`, and re-wire topology in `graph/builder.py`.
-
-## Config Reference
-
-See `backend/code_gen_agent/config.py` (`AgentConfig`) and `backend/.env.example`.
-
-## Tests
+## 测试
 
 ```bash
 cd backend && pytest -v
 ```
 
-Five suites ship with the repo:
+仓库内置五套测试：
 
-| File | Covers |
+| 文件 | 覆盖范围 |
 |---|---|
-| `tests/test_llm_factory.py` | provider adapters + `base_url` handling |
+| `tests/test_llm_factory.py` | 供应商适配器 + `base_url` 处理 |
 | `tests/test_persistence.py` | sqlite / memory / redis / db checkpointer factory |
-| `tests/test_checkers.py` | checker registry + `CheckResult` serialization |
-| `tests/test_graph_builder.py` | graph topology assembly |
-| `tests/test_graph_flow.py` | end-to-end happy path with a mocked LLM |
+| `tests/test_checkers.py` | checker 注册表 + `CheckResult` 序列化 |
+| `tests/test_graph_builder.py` | 图拓扑拼装 |
+| `tests/test_graph_flow.py` | 端到端 happy path（mock LLM） |
 
-## Troubleshooting
+## 指标与仪表盘
 
-- **History page is empty** — the backend writes request records to
-  `backend/data/requests/{tid}.json`. Check that the directory exists and is
-  writable, and that `AGENT_REQUESTS_DIR` (if set) points where you expect.
-- **Observability → LangSmith tab is blank** — set `ENABLE_LANGSMITH=true`
-  and provide a valid `LANGCHAIN_API_KEY` in `.env`, then restart the
-  backend. Projects appear only after at least one run completes.
-- **Download ZIP returns 404** — the archive is only built by the `package`
-  node at the end of a successful run. If a run stops at HITL / clarify, the
-  artifact does not exist yet; resume and let it finish first.
-- **Frontend cannot reach backend** — nginx proxies `/agent/*` to `http://backend:8000` inside the container. Confirm both services started (`docker compose ps`) and that nothing else is occupying port 80 or 8000 on the host.
+完整监控栈（Prometheus + Grafana）随 `docker compose up` 一起启动。
+
+- 指标端点：`http://localhost:9464/metrics`（由 backend 独立线程暴露，与业务 8000 端口解耦）
+- 所有 9 个图节点通过 `BaseNode` 统一埋点，上报：
+  - `agent_node_runs_total{node,status}` — 执行次数
+  - `agent_node_duration_seconds{node}` — 耗时分布
+  - `agent_node_in_progress{node}` — 当前并发
+- FastAPI 所有 HTTP 接口由自实现的 `HttpMetricsMiddleware`（ASGI 中间件）统一采集
+  `agent_http_requests_total` 与 `agent_http_request_duration_seconds`。
+- LLM 层额外上报 `agent_llm_tokens_total` / `agent_llm_calls_total`。
+- Runner 层上报 `agent_run_active` 后台活跃任务数。
+
+Grafana 在 `http://localhost:3000` 自动加载 "Code Gen Agent" 仪表盘，覆盖：
+节点 QPS / P95 / 错误率 / 并发、LLM token 与调用量、HTTP P95、活跃任务数。
+
+详细说明、排障与扩展见 [`monitoring/README.md`](monitoring/README.md)。
+
+如需关闭指标：设置 `AGENT_METRICS_ENABLED=false` 后重启 backend。
+
+## 常见问题
+
+- **History 页为空** —— backend 会将需求记录写入
+  `backend/data/requests/{tid}.json`。请确认目录存在且可写，以及
+  `AGENT_REQUESTS_DIR`（若设置）指向预期路径。
+- **Observability → LangSmith 页面空白** —— 需设置 `ENABLE_LANGSMITH=true`
+  并在 `.env` 中填入有效的 `LANGCHAIN_API_KEY`，然后重启 backend；
+  至少完整跑完一次任务后，LangSmith 才会出现对应 project。
+- **下载 ZIP 返回 404** —— 压缩包仅在成功完成的任务 `package` 节点执行后才生成。
+  若任务停在 HITL / clarify 阶段，产物尚不存在；先 resume 完成后再下载。
+- **前端无法访问 backend** —— nginx 会将 `/agent/*` 代理到容器内的 `http://backend:8000`。
+  确认两个服务均已启动（`docker compose ps`），且宿主机 80 / 8000 端口未被占用。
 
 ## License
 

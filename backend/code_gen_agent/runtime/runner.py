@@ -19,12 +19,27 @@ from typing import Any, AsyncIterator
 from code_gen_agent import CodeGenAgent
 from code_gen_agent.api.streaming import stream_run
 from code_gen_agent.observability.logger import get_logger
+from code_gen_agent.observability.metrics import runtime_metrics
 from code_gen_agent.persistence import RequestStore
 
 # 每线程重放缓冲区保留的最大 SSE 帧数
 REPLAY_BUFFER_SIZE = 500
 
 log = get_logger("runner")
+
+
+def _runner_active_inc() -> None:
+    try:
+        runtime_metrics()["active"].inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _runner_active_dec() -> None:
+    try:
+        runtime_metrics()["active"].dec()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 class RunConflictError(RuntimeError):
@@ -78,6 +93,7 @@ class Runner:
         self._ensure_no_active(tid)
         st = _ThreadState()
         self._threads[tid] = st
+        _runner_active_inc()
 
         async def _body() -> None:
             coro_iter = agent.astream(user_input, thread_id=tid)
@@ -103,6 +119,7 @@ class Runner:
         st = self._threads.get(tid) or _ThreadState()
         self._threads[tid] = st
         st.finished = False
+        _runner_active_inc()
 
         async def _body() -> None:
             coro_iter = agent.aresume(tid, human_feedback)
@@ -196,6 +213,7 @@ class Runner:
             return
         st.finished = True
         st.task = None
+        _runner_active_dec()
         # 向所有等待中的订阅者发送哨兵，使其干净退出
         for q in list(st.subscribers):
             try:

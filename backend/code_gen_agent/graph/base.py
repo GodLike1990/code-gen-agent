@@ -9,6 +9,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from code_gen_agent.graph.state import AgentState
 from code_gen_agent.observability.logger import get_logger
+from code_gen_agent.observability.metrics import node_metrics
 from code_gen_agent.prompts.loader import PromptRegistry
 
 # 纳入节点状态摘要的字段（稳定、低基数）
@@ -85,6 +86,13 @@ class BaseNode(ABC):
     async def __call__(self, state: AgentState) -> dict[str, Any]:
         thread_id = state.get("thread_id", "")
         start = time.perf_counter()
+        # Prometheus 指标：进入节点即 +1 并发
+        try:
+            _m = node_metrics()
+            _m["in_progress"].labels(node=self.name).inc()
+        except Exception:  # noqa: BLE001
+            _m = None
+        status = "ok"
         self.log.info(
             "node_enter",
             extra={
@@ -97,11 +105,20 @@ class BaseNode(ABC):
         try:
             update = await self.run(state)
         except Exception as e:
+            status = "error"
             self.log.exception(
                 "node_error",
                 extra={"thread_id": thread_id, "node": self.name, "event": "error"},
             )
             raise e
+        finally:
+            if _m is not None:
+                try:
+                    _m["in_progress"].labels(node=self.name).dec()
+                    _m["duration"].labels(node=self.name).observe(time.perf_counter() - start)
+                    _m["runs"].labels(node=self.name, status=status).inc()
+                except Exception:  # noqa: BLE001
+                    pass
         duration_ms = int((time.perf_counter() - start) * 1000)
         self.log.info(
             "node_exit",
